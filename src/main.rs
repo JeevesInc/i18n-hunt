@@ -1,3 +1,4 @@
+use oxc::{allocator::Allocator, parser::Parser, span::SourceType};
 use std::{collections::HashSet, fs::read_to_string, path::PathBuf};
 use walkdir::WalkDir;
 
@@ -72,5 +73,27 @@ fn main() {
 
             locales.push(locale_file);
         }
+    }
+    // Extract usage from source
+    let file_path = "./fixtures/src/login.ts";
+    // TODO: handle unwraps
+    let source_text = read_to_string(file_path).unwrap();
+    println!("source text: {}", source_text);
+    // TODO: OPTIMIZATION - do we need to install all the oxc library?
+    let allocator = Allocator::default();
+    let source_type = SourceType::from_path(file_path).unwrap();
+    let parser = Parser::new(&allocator, &source_text, source_type);
+    let ret = parser.parse();
+
+    if !ret.errors.is_empty() {
+        println!("Parse errors:");
+        for err in ret.errors {
+            println!("{:?}", err);
+        }
+    }
+
+    println!("Statements:");
+    for stmt in &ret.program.body {
+        println!("{:?}", stmt);
     }
 }
