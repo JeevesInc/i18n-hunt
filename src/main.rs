@@ -1,4 +1,7 @@
-use oxc::{allocator::Allocator, parser::Parser, span::SourceType};
+use oxc_allocator::Allocator;
+use oxc_ast::ast::{CallExpression, SourceType};
+use oxc_ast_visit::Visit;
+use oxc_parser::Parser;
 use std::{collections::HashSet, fs::read_to_string, path::PathBuf};
 use walkdir::WalkDir;
 
