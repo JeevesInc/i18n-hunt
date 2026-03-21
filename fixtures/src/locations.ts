@@ -1,7 +1,7 @@
 import { useTranslation } from "react-i18next";
 
 export function LocationsPage() {
-    const { t } = useTranslation(["Organization/Locations"]);
+    const { t } = useTranslation(["TeamManagement/Locations"]);
 
     // Static usage
     t("title");
