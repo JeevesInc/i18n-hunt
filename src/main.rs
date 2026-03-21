@@ -2,7 +2,11 @@ use oxc_allocator::Allocator;
 use oxc_ast::ast::{Argument, CallExpression, Expression, SourceType};
 use oxc_ast_visit::Visit;
 use oxc_parser::Parser;
-use std::{collections::HashSet, fs::read_to_string, path::PathBuf};
+use std::{
+    collections::{HashMap, HashSet},
+    fs::read_to_string,
+    path::PathBuf,
+};
 use walkdir::WalkDir;
 
 use serde_json::Value;
@@ -39,21 +43,17 @@ struct LocaleFile {
     keys: HashSet<String>,
 }
 
-// TODO: remove these Debugs
-#[derive(Debug)]
 enum UsageKind {
     Static(String),
     Prefix(String),
     Dynamic,
 }
 
-#[derive(Debug)]
 struct Usage {
     namespaces: Vec<String>,
     kind: UsageKind,
 }
 
-#[derive(Debug)]
 struct CallCollector {
     namespaces: Vec<String>,
     usages: Vec<Usage>,
@@ -134,9 +134,78 @@ impl<'a> Visit<'a> for CallCollector {
     }
 }
 
+#[derive(Default)]
+struct NamespaceAnalysis {
+    used_static: HashSet<String>,
+    prefixes: HashSet<String>,
+    dynamic_count: usize,
+}
+
+struct UnusedKey {
+    namespace: String,
+    key: String,
+    path: PathBuf,
+}
+
+struct AnalysisResult {
+    unused: Vec<UnusedKey>,
+}
+
+fn analyze(locales: &[LocaleFile], usages: &[Usage]) -> AnalysisResult {
+    // TODO: maybe we should check these clones?
+
+    let mut usage_index: HashMap<String, NamespaceAnalysis> = HashMap::new();
+
+    for usage in usages {
+        for namespace in &usage.namespaces {
+            let entry = usage_index.entry(namespace.clone()).or_default();
+
+            match &usage.kind {
+                UsageKind::Static(key) => {
+                    entry.used_static.insert(key.clone());
+                }
+                UsageKind::Prefix(prefix) => {
+                    entry.prefixes.insert(prefix.clone());
+                }
+                UsageKind::Dynamic => {
+                    entry.dynamic_count += 1;
+                }
+            }
+        }
+    }
+
+    let mut unused = Vec::new();
+
+    for locale in locales {
+        let analysis = usage_index.get(&locale.namespace);
+
+        for key in &locale.keys {
+            let is_used_static = analysis
+                .map(|a| a.used_static.contains(key))
+                .unwrap_or(false);
+
+            let is_protected_by_prefix = analysis
+                .map(|a| a.prefixes.iter().any(|prefix| key.starts_with(prefix)))
+                .unwrap_or(false);
+
+            if !is_used_static && !is_protected_by_prefix {
+                unused.push(UnusedKey {
+                    namespace: locale.namespace.clone(),
+                    key: key.clone(),
+                    path: locale.path.clone(),
+                });
+            }
+        }
+    }
+
+    AnalysisResult { unused }
+}
+
 fn main() {
     // TODO: based on user input or config file
     let locales_dir = "./fixtures/locales";
+    let file_path = "./fixtures/src/login.ts";
+
     let mut locales: Vec<LocaleFile> = vec![];
 
     // TODO: evaluate and handle unwraps
@@ -164,20 +233,13 @@ fn main() {
                 keys: out,
             };
 
-            println!("File: {}", locale_file.path.display());
-            println!("Namespace: {}", locale_file.namespace);
-            println!("Keys: {:?}", locale_file.keys);
-            println!();
-
             locales.push(locale_file);
         }
     }
 
     // Extract usage from source
-    let file_path = "./fixtures/src/login.ts";
     // TODO: handle unwraps
     let source_text = read_to_string(file_path).unwrap();
-    println!("source text: {}", source_text);
     // TODO: OPTIMIZATION - do we need to install all the oxc library?
     let allocator = Allocator::default();
     let source_type = SourceType::from_path(file_path).unwrap();
@@ -195,7 +257,18 @@ fn main() {
         namespaces: Vec::new(),
         usages: Vec::new(),
     };
+
     collector.visit_program(&ret.program);
 
-    println!("{:#?}", collector);
+    let result = analyze(&locales, &collector.usages);
+
+    println!("Unused keys:");
+    for item in result.unused {
+        println!(
+            "[{}] {} -> {}",
+            item.namespace,
+            item.path.display(),
+            item.key
+        );
+    }
 }
