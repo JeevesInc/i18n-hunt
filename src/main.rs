@@ -49,55 +49,84 @@ enum UsageKind {
 
 #[derive(Debug)]
 struct Usage {
-    // namespace: String,
+    namespaces: Vec<String>,
     kind: UsageKind,
 }
 
 #[derive(Debug)]
 struct CallCollector {
+    namespaces: Vec<String>,
     usages: Vec<Usage>,
 }
 
 impl CallCollector {
     fn push(&mut self, kind: UsageKind) {
-        self.usages.push(Usage { kind });
+        self.usages.push(Usage {
+            namespaces: self.namespaces.clone(),
+            kind,
+        });
     }
 }
 
 impl<'a> Visit<'a> for CallCollector {
     fn visit_call_expression(&mut self, expr: &CallExpression<'a>) {
         if let Expression::Identifier(ident) = &expr.callee {
-            if ident.name.as_str() == "t" {
-                if let Some(first_arg) = expr.arguments.first() {
-                    match first_arg {
-                        // t("welcome")
-                        Argument::StringLiteral(s) => {
-                            self.push(UsageKind::Static(s.value.to_string()))
-                        }
-
-                        // t("auth.${action}")
-                        Argument::TemplateLiteral(tpl) => {
-                            let prefix = tpl
-                                .quasis
-                                .first()
-                                .map(|q| q.value.raw.as_str())
-                                .unwrap_or("");
-
-                            if tpl.expressions.is_empty() {
-                                self.push(UsageKind::Static(prefix.to_string()))
-                            } else if prefix.is_empty() {
-                                self.push(UsageKind::Dynamic);
-                            } else {
-                                self.push(UsageKind::Prefix(prefix.to_string()));
+            match ident.name.as_str() {
+                "useTranslation" => {
+                    if let Some(first_arg) = expr.arguments.first() {
+                        match first_arg {
+                            Argument::StringLiteral(s) => {
+                                self.namespaces.push(s.value.to_string());
                             }
-                        }
-
-                        // t(key), t(buildKey()), etc.
-                        _ => {
-                            self.push(UsageKind::Dynamic);
+                            Argument::ArrayExpression(arr) => {
+                                for element in &arr.elements {
+                                    if let oxc_ast::ast::ArrayExpressionElement::StringLiteral(s) =
+                                        element
+                                    {
+                                        self.namespaces.push(s.value.to_string());
+                                    }
+                                }
+                            }
+                            _ => {
+                                // dynamic namespace;
+                                // For initial version we can just ignore.
+                            }
                         }
                     }
                 }
+                "t" => {
+                    if let Some(first_arg) = expr.arguments.first() {
+                        match first_arg {
+                            // t("welcome")
+                            Argument::StringLiteral(s) => {
+                                self.push(UsageKind::Static(s.value.to_string()))
+                            }
+
+                            // t("auth.${action}")
+                            Argument::TemplateLiteral(tpl) => {
+                                let prefix = tpl
+                                    .quasis
+                                    .first()
+                                    .map(|q| q.value.raw.as_str())
+                                    .unwrap_or("");
+
+                                if tpl.expressions.is_empty() {
+                                    self.push(UsageKind::Static(prefix.to_string()))
+                                } else if prefix.is_empty() {
+                                    self.push(UsageKind::Dynamic);
+                                } else {
+                                    self.push(UsageKind::Prefix(prefix.to_string()));
+                                }
+                            }
+
+                            // t(key), t(buildKey()), etc.
+                            _ => {
+                                self.push(UsageKind::Dynamic);
+                            }
+                        }
+                    }
+                }
+                _ => {}
             }
         }
 
@@ -162,8 +191,11 @@ fn main() {
         }
     }
 
-    let mut collector = CallCollector { usages: Vec::new() };
+    let mut collector = CallCollector {
+        namespaces: Vec::new(),
+        usages: Vec::new(),
+    };
     collector.visit_program(&ret.program);
 
-    println!("{:#?}", collector.usages);
+    println!("{:#?}", collector);
 }
