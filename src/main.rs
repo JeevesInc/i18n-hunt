@@ -204,7 +204,7 @@ fn analyze(locales: &[LocaleFile], usages: &[Usage]) -> AnalysisResult {
 fn main() {
     // TODO: based on user input or config file
     let locales_dir = "./fixtures/locales";
-    let file_path = "./fixtures/src/login.ts";
+    let source_dir = "./fixtures/src";
 
     let mut locales: Vec<LocaleFile> = vec![];
 
@@ -237,30 +237,51 @@ fn main() {
         }
     }
 
+    let mut all_usages: Vec<Usage> = vec![];
+
     // Extract usage from source
     // TODO: handle unwraps
-    let source_text = read_to_string(file_path).unwrap();
-    // TODO: OPTIMIZATION - do we need to install all the oxc library?
-    let allocator = Allocator::default();
-    let source_type = SourceType::from_path(file_path).unwrap();
-    let parser = Parser::new(&allocator, &source_text, source_type);
-    let ret = parser.parse();
+    for entry in WalkDir::new(source_dir) {
+        let entry = entry.unwrap();
 
-    if !ret.errors.is_empty() {
-        println!("Parse errors:");
-        for err in ret.errors {
-            println!("{:?}", err);
+        if entry.file_type().is_file() {
+            let path = entry.path();
+
+            let is_supported = matches!(
+                path.extension().and_then(|ext| ext.to_str()),
+                Some("ts") | Some("tsx") | Some("js") | Some("jsx")
+            );
+
+            if !is_supported {
+                continue;
+            }
+
+            let source_text = read_to_string(path).unwrap();
+
+            let allocator = Allocator::default();
+            let source_type = SourceType::from_path(path).unwrap();
+            let parser = Parser::new(&allocator, &source_text, source_type);
+            let ret = parser.parse();
+
+            if !ret.errors.is_empty() {
+                println!("Parse errors:");
+                for err in ret.errors {
+                    println!("{:?}", err);
+                }
+            }
+
+            let mut collector = CallCollector {
+                namespaces: Vec::new(),
+                usages: Vec::new(),
+            };
+
+            collector.visit_program(&ret.program);
+
+            all_usages.extend(collector.usages);
         }
     }
 
-    let mut collector = CallCollector {
-        namespaces: Vec::new(),
-        usages: Vec::new(),
-    };
-
-    collector.visit_program(&ret.program);
-
-    let result = analyze(&locales, &collector.usages);
+    let result = analyze(&locales, &all_usages);
 
     println!("Unused keys:");
     for item in result.unused {
