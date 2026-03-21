@@ -1,5 +1,5 @@
 use oxc_allocator::Allocator;
-use oxc_ast::ast::{CallExpression, SourceType};
+use oxc_ast::ast::{Argument, CallExpression, Expression, SourceType};
 use oxc_ast_visit::Visit;
 use oxc_parser::Parser;
 use std::{collections::HashSet, fs::read_to_string, path::PathBuf};
@@ -37,6 +37,72 @@ struct LocaleFile {
     namespace: String,
     path: PathBuf,
     keys: HashSet<String>,
+}
+
+// TODO: remove these Debugs
+#[derive(Debug)]
+enum UsageKind {
+    Static(String),
+    Prefix(String),
+    Dynamic,
+}
+
+#[derive(Debug)]
+struct Usage {
+    // namespace: String,
+    kind: UsageKind,
+}
+
+#[derive(Debug)]
+struct CallCollector {
+    usages: Vec<Usage>,
+}
+
+impl CallCollector {
+    fn push(&mut self, kind: UsageKind) {
+        self.usages.push(Usage { kind });
+    }
+}
+
+impl<'a> Visit<'a> for CallCollector {
+    fn visit_call_expression(&mut self, expr: &CallExpression<'a>) {
+        if let Expression::Identifier(ident) = &expr.callee {
+            if ident.name.as_str() == "t" {
+                if let Some(first_arg) = expr.arguments.first() {
+                    match first_arg {
+                        // t("welcome")
+                        Argument::StringLiteral(s) => {
+                            self.push(UsageKind::Static(s.value.to_string()))
+                        }
+
+                        // t("auth.${action}")
+                        Argument::TemplateLiteral(tpl) => {
+                            let prefix = tpl
+                                .quasis
+                                .first()
+                                .map(|q| q.value.raw.as_str())
+                                .unwrap_or("");
+
+                            if tpl.expressions.is_empty() {
+                                self.push(UsageKind::Static(prefix.to_string()))
+                            } else if prefix.is_empty() {
+                                self.push(UsageKind::Dynamic);
+                            } else {
+                                self.push(UsageKind::Prefix(prefix.to_string()));
+                            }
+                        }
+
+                        // t(key), t(buildKey()), etc.
+                        _ => {
+                            self.push(UsageKind::Dynamic);
+                        }
+                    }
+                }
+            }
+        }
+
+        oxc_ast_visit::walk::walk_call_expression(self, expr);
+    }
 }
 
 fn main() {
@@ -77,6 +143,7 @@ fn main() {
             locales.push(locale_file);
         }
     }
+
     // Extract usage from source
     let file_path = "./fixtures/src/login.ts";
     // TODO: handle unwraps
@@ -95,8 +162,8 @@ fn main() {
         }
     }
 
-    println!("Statements:");
-    for stmt in &ret.program.body {
-        println!("{:?}", stmt);
-    }
+    let mut collector = CallCollector { usages: Vec::new() };
+    collector.visit_program(&ret.program);
+
+    println!("{:#?}", collector.usages);
 }
