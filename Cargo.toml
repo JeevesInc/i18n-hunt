@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+clap = { version = "4.6.0", features = ["derive"] }
 oxc_allocator = "0.121.0"
 oxc_ast = "0.121.0"
 oxc_ast_visit = "0.121.0"

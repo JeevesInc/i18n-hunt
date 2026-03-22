@@ -1,7 +1,8 @@
+use clap::Parser;
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{Argument, CallExpression, Expression, SourceType};
 use oxc_ast_visit::Visit;
-use oxc_parser::Parser;
+use oxc_parser::Parser as OxcParser;
 use std::{
     collections::{HashMap, HashSet},
     fs::read_to_string,
@@ -201,15 +202,28 @@ fn analyze(locales: &[LocaleFile], usages: &[Usage]) -> AnalysisResult {
     AnalysisResult { unused }
 }
 
+#[derive(Parser)]
+#[command(name = "i18n-hunt")]
+#[command(about = "Detect unused i18n keys using AST analysis")]
+struct Args {
+    #[arg(long)]
+    locales: PathBuf,
+
+    #[arg(long)]
+    src: PathBuf,
+}
+
 fn main() {
+    let args = Args::parse();
+
     // TODO: based on user input or config file
-    let locales_dir = "./fixtures/locales";
-    let source_dir = "./fixtures/src";
+    let locales_dir = args.locales;
+    let source_dir = args.src;
 
     let mut locales: Vec<LocaleFile> = vec![];
 
     // TODO: evaluate and handle unwraps
-    for entry in WalkDir::new(locales_dir) {
+    for entry in WalkDir::new(&locales_dir) {
         let entry = entry.unwrap();
         // TODO: add better check for json
         if entry.file_type().is_file() {
@@ -222,7 +236,7 @@ fn main() {
 
             // TODO: refactor to  derive_namespace function?
             // TODO: hadle unwraps and possible errors
-            let relative = entry.path().strip_prefix(locales_dir).unwrap();
+            let relative = entry.path().strip_prefix(&locales_dir).unwrap();
             let without_ext = relative.with_extension("");
             let normalized = without_ext.to_string_lossy().replace('\\', "/");
 
@@ -260,7 +274,7 @@ fn main() {
 
             let allocator = Allocator::default();
             let source_type = SourceType::from_path(path).unwrap();
-            let parser = Parser::new(&allocator, &source_text, source_type);
+            let parser = OxcParser::new(&allocator, &source_text, source_type);
             let ret = parser.parse();
 
             if !ret.errors.is_empty() {
