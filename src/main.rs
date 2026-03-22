@@ -214,6 +214,18 @@ struct Args {
 }
 
 fn main() {
+    // TODO: handle file case
+    // TODO: refactor main
+    // TODO: better report
+    // TODO: fail on unused
+    // TODO: verbose mode
+    // TODO: improve dynamic
+    // TODO: auto remove unused keys
+    // TODO: run for staged files
+    // TODO: consider root (by file - default or paramenter) to get the namespace
+    // TODO: improve code docs
+    // TODO: improve CLI docs
+
     let args = Args::parse();
 
     // TODO: based on user input or config file
@@ -234,7 +246,7 @@ fn main() {
             let deserialized: Value = serde_json::from_str(&content).unwrap();
             flatten_into(&deserialized, &mut buf, &mut out);
 
-            // TODO: refactor to  derive_namespace function?
+            // TODO: refactor to derive_namespace function?
             // TODO: hadle unwraps and possible errors
             let relative = entry.path().strip_prefix(&locales_dir).unwrap();
             let without_ext = relative.with_extension("");
