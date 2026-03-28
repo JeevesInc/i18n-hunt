@@ -1,4 +1,3 @@
-use clap::Parser;
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{Argument, CallExpression, Expression, SourceType};
 use oxc_ast_visit::Visit;
@@ -11,6 +10,8 @@ use std::{
 use walkdir::WalkDir;
 
 use serde_json::Value;
+
+mod cli;
 
 fn flatten_into(value: &Value, buf: &mut String, out: &mut HashSet<String>) {
     match value {
@@ -202,17 +203,6 @@ fn analyze(locales: &[LocaleFile], usages: &[Usage]) -> AnalysisResult {
     AnalysisResult { unused }
 }
 
-#[derive(Parser)]
-#[command(name = "i18n-hunt")]
-#[command(about = "Detect unused i18n keys using AST analysis")]
-struct Args {
-    #[arg(long)]
-    locales: PathBuf,
-
-    #[arg(long)]
-    src: PathBuf,
-}
-
 fn main() {
     // TODO: handle file case
     // TODO: refactor main
@@ -226,11 +216,11 @@ fn main() {
     // TODO: improve code docs
     // TODO: improve CLI docs
 
-    let args = Args::parse();
+    let args = cli::parse();
+    let config = args.into_config();
 
-    // TODO: based on user input or config file
-    let locales_dir = args.locales;
-    let source_dir = args.src;
+    let locales_dir = config.locales;
+    let source_dir = config.src;
 
     let mut locales: Vec<LocaleFile> = vec![];
 
