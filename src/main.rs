@@ -1,43 +1,12 @@
-use oxc_allocator::Allocator;
-use oxc_ast::ast::{Argument, CallExpression, Expression, SourceType};
+use oxc_ast::ast::{Argument, CallExpression, Expression};
 use oxc_ast_visit::Visit;
-use oxc_parser::Parser as OxcParser;
 use std::{
     collections::{HashMap, HashSet},
-    fs::read_to_string,
     path::PathBuf,
 };
-use walkdir::WalkDir;
-
-use serde_json::Value;
 
 mod cli;
-
-fn flatten_into(value: &Value, buf: &mut String, out: &mut HashSet<String>) {
-    match value {
-        Value::Object(map) => {
-            for (k, v) in map {
-                let previus_state = buf.len();
-
-                if !buf.is_empty() {
-                    buf.push('.');
-                }
-
-                buf.push_str(&k);
-
-                flatten_into(v, buf, out);
-
-                buf.truncate(previus_state);
-            }
-        }
-        Value::String(_) => {
-            if !buf.is_empty() {
-                out.insert(buf.clone());
-            }
-        }
-        _ => {}
-    }
-}
+mod core;
 
 struct LocaleFile {
     namespace: String,
@@ -219,88 +188,12 @@ fn main() {
     let args = cli::parse();
     let config = args.into_config();
 
-    let locales_dir = config.locales;
-    let source_dir = config.src;
+    let result = core::run(&config).unwrap();
 
-    let mut locales: Vec<LocaleFile> = vec![];
-
-    // TODO: evaluate and handle unwraps
-    for entry in WalkDir::new(&locales_dir) {
-        let entry = entry.unwrap();
-        // TODO: add better check for json
-        if entry.file_type().is_file() {
-            let mut buf = String::new();
-            let mut out = HashSet::new();
-
-            let content = read_to_string(entry.path()).unwrap();
-            let deserialized: Value = serde_json::from_str(&content).unwrap();
-            flatten_into(&deserialized, &mut buf, &mut out);
-
-            // TODO: refactor to derive_namespace function?
-            // TODO: hadle unwraps and possible errors
-            let relative = entry.path().strip_prefix(&locales_dir).unwrap();
-            let without_ext = relative.with_extension("");
-            let normalized = without_ext.to_string_lossy().replace('\\', "/");
-
-            // TODO: should we do impl for new
-            let locale_file = LocaleFile {
-                namespace: normalized,
-                path: entry.path().to_path_buf(),
-                keys: out,
-            };
-
-            locales.push(locale_file);
-        }
-    }
-
-    let mut all_usages: Vec<Usage> = vec![];
-
-    // Extract usage from source
-    // TODO: handle unwraps
-    for entry in WalkDir::new(source_dir) {
-        let entry = entry.unwrap();
-
-        if entry.file_type().is_file() {
-            let path = entry.path();
-
-            let is_supported = matches!(
-                path.extension().and_then(|ext| ext.to_str()),
-                Some("ts") | Some("tsx") | Some("js") | Some("jsx")
-            );
-
-            if !is_supported {
-                continue;
-            }
-
-            let source_text = read_to_string(path).unwrap();
-
-            let allocator = Allocator::default();
-            let source_type = SourceType::from_path(path).unwrap();
-            let parser = OxcParser::new(&allocator, &source_text, source_type);
-            let ret = parser.parse();
-
-            if !ret.errors.is_empty() {
-                println!("Parse errors:");
-                for err in ret.errors {
-                    println!("{:?}", err);
-                }
-            }
-
-            let mut collector = CallCollector {
-                namespaces: Vec::new(),
-                usages: Vec::new(),
-            };
-
-            collector.visit_program(&ret.program);
-
-            all_usages.extend(collector.usages);
-        }
-    }
-
-    let result = analyze(&locales, &all_usages);
+    let idk = analyze(&result.locales, &result.usages);
 
     println!("Unused keys:");
-    for item in result.unused {
+    for item in idk.unused {
         println!(
             "[{}] {} -> {}",
             item.namespace,
