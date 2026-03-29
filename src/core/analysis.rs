@@ -42,7 +42,7 @@ pub struct UnusedKey {
 }
 
 pub struct AnalysisResult {
-    pub unused: Vec<UnusedKey>,
+    pub unused_keys: Vec<UnusedKey>,
 }
 
 pub fn analyze(locales: &[LocaleFile], usages: &[Usage]) -> AnalysisResult {
@@ -59,7 +59,7 @@ pub fn analyze(locales: &[LocaleFile], usages: &[Usage]) -> AnalysisResult {
         }
     }
 
-    let mut unused = Vec::new();
+    let mut unused_keys = Vec::new();
 
     for locale in locales {
         let analysis = usage_index.get(&locale.namespace);
@@ -68,7 +68,7 @@ pub fn analyze(locales: &[LocaleFile], usages: &[Usage]) -> AnalysisResult {
             let is_used = analysis.map(|a| a.protects_key(key)).unwrap_or(false);
 
             if !is_used {
-                unused.push(UnusedKey {
+                unused_keys.push(UnusedKey {
                     namespace: locale.namespace.clone(),
                     key: key.clone(),
                     path: locale.path.clone(),
@@ -77,5 +77,5 @@ pub fn analyze(locales: &[LocaleFile], usages: &[Usage]) -> AnalysisResult {
         }
     }
 
-    AnalysisResult { unused }
+    AnalysisResult { unused_keys }
 }

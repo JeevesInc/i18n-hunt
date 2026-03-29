@@ -19,14 +19,14 @@ pub fn run(config: &Config) -> Result<AnalysisResult, I18nError> {
 }
 
 pub fn print_report(result: &AnalysisResult) {
-    if result.unused.is_empty() {
+    if result.unused_keys.is_empty() {
         println!("No unused translation keys found.");
         return;
     }
 
     println!("Unused translation keys:\n");
 
-    for item in &result.unused {
+    for item in &result.unused_keys {
         println!(
             "[{}] {} -> {}",
             item.namespace,
@@ -35,5 +35,5 @@ pub fn print_report(result: &AnalysisResult) {
         );
     }
 
-    println!("\nTotal unused keys: {}", result.unused.len());
+    println!("\nTotal unused keys: {}", result.unused_keys.len());
 }
