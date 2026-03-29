@@ -37,6 +37,15 @@ impl CallCollector {
     }
 }
 
+impl Default for CallCollector {
+    fn default() -> Self {
+        Self {
+            namespaces: Vec::new(),
+            usages: Vec::new(),
+        }
+    }
+}
+
 impl<'a> Visit<'a> for CallCollector {
     fn visit_call_expression(&mut self, expr: &CallExpression<'a>) {
         if let Expression::Identifier(ident) = &expr.callee {
@@ -158,10 +167,7 @@ fn parse_source_file(path: &Path) -> Result<Vec<Usage>, I18nError> {
         });
     }
 
-    let mut collector = CallCollector {
-        namespaces: Vec::new(),
-        usages: Vec::new(),
-    };
+    let mut collector = CallCollector::default();
 
     collector.visit_program(&ret.program);
     Ok(collector.usages)
