@@ -1,4 +1,7 @@
-use std::{fs::read_to_string, path::PathBuf};
+use std::{
+    fs::read_to_string,
+    path::{Path, PathBuf},
+};
 
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{Argument, CallExpression, Expression};
@@ -109,12 +112,7 @@ pub fn collect_usages(source_dir: &PathBuf) -> Result<Vec<Usage>, I18nError> {
         if entry.file_type().is_file() {
             let path = entry.path();
 
-            let is_supported = matches!(
-                path.extension().and_then(|ext| ext.to_str()),
-                Some("ts") | Some("tsx") | Some("js") | Some("jsx")
-            );
-
-            if !is_supported {
+            if !is_supported_source_file(path) {
                 continue;
             }
 
@@ -147,4 +145,11 @@ pub fn collect_usages(source_dir: &PathBuf) -> Result<Vec<Usage>, I18nError> {
     }
 
     Ok(all_usages)
+}
+
+fn is_supported_source_file(path: &Path) -> bool {
+    matches!(
+        path.extension().and_then(|ext| ext.to_str()),
+        Some("ts") | Some("tsx") | Some("js") | Some("jsx")
+    )
 }
