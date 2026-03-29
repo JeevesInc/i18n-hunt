@@ -7,10 +7,7 @@ fn main() {
     // TODO: handle file case
     // TODO: better report
     // TODO: fail on unused
-    // TODO: verbose mode
     // TODO: improve dynamic
-    // TODO: auto remove unused keys
-    // TODO: run for staged files
     // TODO: consider root (by file - default or paramenter) to get the namespace
     // TODO: improve code docs
     // TODO: improve CLI docs
