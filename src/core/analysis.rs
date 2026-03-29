@@ -29,6 +29,10 @@ impl NamespaceAnalysis {
             }
         }
     }
+
+    fn protects_key(&self, key: &str) -> bool {
+        self.used_static.contains(key) || self.prefixes.iter().any(|prefix| key.starts_with(prefix))
+    }
 }
 
 pub struct UnusedKey {
@@ -61,15 +65,9 @@ pub fn analyze(locales: &[LocaleFile], usages: &[Usage]) -> AnalysisResult {
         let analysis = usage_index.get(&locale.namespace);
 
         for key in &locale.keys {
-            let is_used_static = analysis
-                .map(|a| a.used_static.contains(key))
-                .unwrap_or(false);
+            let is_used = analysis.map(|a| a.protects_key(key)).unwrap_or(false);
 
-            let is_protected_by_prefix = analysis
-                .map(|a| a.prefixes.iter().any(|prefix| key.starts_with(prefix)))
-                .unwrap_or(false);
-
-            if !is_used_static && !is_protected_by_prefix {
+            if !is_used {
                 unused.push(UnusedKey {
                     namespace: locale.namespace.clone(),
                     key: key.clone(),
