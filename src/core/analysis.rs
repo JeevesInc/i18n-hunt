@@ -15,14 +15,14 @@ struct NamespaceAnalysis {
     dynamic_count: usize,
 }
 
-struct UnusedKey {
-    namespace: String,
-    key: String,
-    path: PathBuf,
+pub struct UnusedKey {
+    pub namespace: String,
+    pub key: String,
+    pub path: PathBuf,
 }
 
 pub struct AnalysisResult {
-    unused: Vec<UnusedKey>,
+    pub unused: Vec<UnusedKey>,
 }
 
 pub fn analyze(locales: &[LocaleFile], usages: &[Usage]) -> AnalysisResult {
@@ -73,24 +73,4 @@ pub fn analyze(locales: &[LocaleFile], usages: &[Usage]) -> AnalysisResult {
     }
 
     AnalysisResult { unused }
-}
-
-pub fn print_report(result: &AnalysisResult) {
-    if result.unused.is_empty() {
-        println!("No unused translation keys found.");
-        return;
-    }
-
-    println!("Unused translation keys:\n");
-
-    for item in &result.unused {
-        println!(
-            "[{}] {} -> {}",
-            item.namespace,
-            item.path.display(),
-            item.key
-        );
-    }
-
-    println!("\nTotal unused keys: {}", result.unused.len());
 }

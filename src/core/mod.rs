@@ -17,3 +17,23 @@ pub fn run(config: &Config) -> Result<AnalysisResult, I18nError> {
     let usages = source::collect_usages(&config.src)?;
     Ok(analysis::analyze(&locales, &usages))
 }
+
+pub fn print_report(result: &AnalysisResult) {
+    if result.unused.is_empty() {
+        println!("No unused translation keys found.");
+        return;
+    }
+
+    println!("Unused translation keys:\n");
+
+    for item in &result.unused {
+        println!(
+            "[{}] {} -> {}",
+            item.namespace,
+            item.path.display(),
+            item.key
+        );
+    }
+
+    println!("\nTotal unused keys: {}", result.unused.len());
+}

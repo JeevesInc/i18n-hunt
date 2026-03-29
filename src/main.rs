@@ -1,4 +1,4 @@
-use crate::core::{analysis, error::I18nError};
+use crate::core::error::I18nError;
 
 mod cli;
 mod core;
@@ -27,6 +27,6 @@ fn run() -> Result<(), I18nError> {
 
     let result = core::run(&config)?;
 
-    analysis::print_report(&result);
+    core::print_report(&result);
     Ok(())
 }
