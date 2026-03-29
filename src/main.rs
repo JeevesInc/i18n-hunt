@@ -5,14 +5,10 @@ use std::{
     path::PathBuf,
 };
 
+use crate::core::locale::LocaleFile;
+
 mod cli;
 mod core;
-
-struct LocaleFile {
-    namespace: String,
-    path: PathBuf,
-    keys: HashSet<String>,
-}
 
 enum UsageKind {
     Static(String),
