@@ -16,29 +16,15 @@ pub struct LocaleFile {
 }
 
 // TODO: handle single file?
-pub fn load_locales(locales_dir: &PathBuf) -> Result<Vec<LocaleFile>, I18nError> {
+pub fn load_locales(dir: &PathBuf) -> Result<Vec<LocaleFile>, I18nError> {
     let mut locales: Vec<LocaleFile> = vec![];
 
-    for entry in WalkDir::new(&locales_dir) {
+    for entry in WalkDir::new(&dir) {
         let entry = entry?;
         let path = entry.path();
 
         if is_json_file(path) {
-            let mut buf = String::new();
-            let mut out = HashSet::new();
-
-            let content = read_to_string(path)?;
-            let deserialized: Value = serde_json::from_str(&content)?;
-            flatten_into(&deserialized, &mut buf, &mut out);
-
-            let namespace = derive_namespace(locales_dir, &path)?;
-
-            // TODO: should we do impl for new
-            let locale_file = LocaleFile {
-                namespace,
-                path: path.to_path_buf(),
-                keys: out,
-            };
+            let locale_file = parse_locale_file(path, dir)?;
 
             locales.push(locale_file);
         }
@@ -49,6 +35,26 @@ pub fn load_locales(locales_dir: &PathBuf) -> Result<Vec<LocaleFile>, I18nError>
 
 fn is_json_file(path: &Path) -> bool {
     matches!(path.extension().and_then(|ext| ext.to_str()), Some("json"))
+}
+
+fn parse_locale_file(path: &Path, base_dir: &Path) -> Result<LocaleFile, I18nError> {
+    let content = read_to_string(path)?;
+
+    let json: Value = serde_json::from_str(&content)?;
+
+    let mut keys = HashSet::new();
+    let mut buffer = String::new();
+
+    flatten_into(&json, &mut buffer, &mut keys);
+
+    let namespace = derive_namespace(base_dir, path)?;
+
+    // TODO: should we do impl new for LocaleFile?
+    Ok(LocaleFile {
+        namespace,
+        path: path.to_path_buf(),
+        keys,
+    })
 }
 
 fn flatten_into(value: &Value, buf: &mut String, out: &mut HashSet<String>) {
