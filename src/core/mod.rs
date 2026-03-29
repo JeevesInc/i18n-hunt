@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use crate::core::analysis::AnalysisResult;
 
 pub mod analysis;
+pub mod error;
 pub mod locale;
 pub mod source;
 
