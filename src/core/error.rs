@@ -44,3 +44,9 @@ impl From<serde_json::Error> for I18nError {
         I18nError::Json(err)
     }
 }
+
+impl From<walkdir::Error> for I18nError {
+    fn from(err: walkdir::Error) -> Self {
+        I18nError::WalkDir(err.to_string())
+    }
+}

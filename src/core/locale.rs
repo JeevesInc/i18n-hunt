@@ -20,14 +20,14 @@ pub fn load_locales(locales_dir: &PathBuf) -> Result<Vec<LocaleFile>, I18nError>
     let mut locales: Vec<LocaleFile> = vec![];
 
     for entry in WalkDir::new(&locales_dir) {
-        let entry = entry.unwrap();
+        let entry = entry?;
         // TODO: add better check for json
         if entry.file_type().is_file() {
             let mut buf = String::new();
             let mut out = HashSet::new();
 
-            let content = read_to_string(entry.path()).unwrap();
-            let deserialized: Value = serde_json::from_str(&content).unwrap();
+            let content = read_to_string(entry.path())?;
+            let deserialized: Value = serde_json::from_str(&content)?;
             flatten_into(&deserialized, &mut buf, &mut out);
 
             let namespace = derive_namespace(locales_dir, &entry.path())?;

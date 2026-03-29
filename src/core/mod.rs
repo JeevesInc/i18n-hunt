@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use crate::core::analysis::AnalysisResult;
+use crate::core::{analysis::AnalysisResult, error::I18nError};
 
 pub mod analysis;
 pub mod error;
@@ -12,7 +12,7 @@ pub struct Config {
     pub src: PathBuf,
 }
 
-pub fn run(config: &Config) -> Result<AnalysisResult, &str> {
+pub fn run(config: &Config) -> Result<AnalysisResult, I18nError> {
     let locales = locale::load_locales(&config.locales)?;
     let usages = source::collect_usages(&config.src)?;
     Ok(analysis::analyze(&locales, &usages))

@@ -7,6 +7,8 @@ use oxc_parser::Parser;
 use oxc_span::SourceType;
 use walkdir::WalkDir;
 
+use crate::core::error::I18nError;
+
 pub enum UsageKind {
     Static(String),
     Prefix(String),
@@ -98,11 +100,11 @@ impl<'a> Visit<'a> for CallCollector {
     }
 }
 
-pub fn collect_usages(source_dir: &PathBuf) -> Result<Vec<Usage>, &str> {
+pub fn collect_usages(source_dir: &PathBuf) -> Result<Vec<Usage>, I18nError> {
     let mut all_usages: Vec<Usage> = vec![];
 
     for entry in WalkDir::new(source_dir) {
-        let entry = entry.unwrap();
+        let entry = entry?;
 
         if entry.file_type().is_file() {
             let path = entry.path();
@@ -116,10 +118,13 @@ pub fn collect_usages(source_dir: &PathBuf) -> Result<Vec<Usage>, &str> {
                 continue;
             }
 
-            let source_text = read_to_string(path).unwrap();
+            let source_text = read_to_string(path)?;
 
             let allocator = Allocator::default();
-            let source_type = SourceType::from_path(path).unwrap();
+            let source_type = SourceType::from_path(path).map_err(|_| I18nError::SourceParse {
+                path: path.to_path_buf(),
+                message: "failed to infer source type".to_string(),
+            })?;
             let parser = Parser::new(&allocator, &source_text, source_type);
             let ret = parser.parse();
 
