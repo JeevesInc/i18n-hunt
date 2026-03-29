@@ -21,21 +21,22 @@ pub fn load_locales(locales_dir: &PathBuf) -> Result<Vec<LocaleFile>, I18nError>
 
     for entry in WalkDir::new(&locales_dir) {
         let entry = entry?;
+        let path = entry.path();
 
-        if is_json_file(entry.path()) {
+        if is_json_file(path) {
             let mut buf = String::new();
             let mut out = HashSet::new();
 
-            let content = read_to_string(entry.path())?;
+            let content = read_to_string(path)?;
             let deserialized: Value = serde_json::from_str(&content)?;
             flatten_into(&deserialized, &mut buf, &mut out);
 
-            let namespace = derive_namespace(locales_dir, &entry.path())?;
+            let namespace = derive_namespace(locales_dir, &path)?;
 
             // TODO: should we do impl for new
             let locale_file = LocaleFile {
                 namespace,
-                path: entry.path().to_path_buf(),
+                path: path.to_path_buf(),
                 keys: out,
             };
 
