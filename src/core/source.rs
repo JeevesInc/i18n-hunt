@@ -4,8 +4,8 @@ use std::{
 };
 
 use oxc_allocator::Allocator;
-use oxc_ast::ast::{Argument, CallExpression, Expression};
-use oxc_ast_visit::Visit;
+use oxc_ast::ast::{Argument, CallExpression, Expression, TemplateLiteral};
+use oxc_ast_visit::{Visit, walk};
 use oxc_parser::Parser;
 use oxc_span::SourceType;
 use walkdir::WalkDir;
@@ -29,11 +29,52 @@ struct CallCollector {
 }
 
 impl CallCollector {
-    fn push(&mut self, kind: UsageKind) {
+    fn push_usage(&mut self, kind: UsageKind) {
         self.usages.push(Usage {
             namespaces: self.namespaces.clone(),
             kind,
         });
+    }
+
+    fn handle_use_translation<'a>(&mut self, expr: &CallExpression<'a>) {
+        let Some(first_arg) = expr.arguments.first() else {
+            return;
+        };
+
+        match first_arg {
+            Argument::StringLiteral(s) => {
+                self.namespaces.push(s.value.to_string());
+            }
+            Argument::ArrayExpression(arr) => {
+                for element in &arr.elements {
+                    if let oxc_ast::ast::ArrayExpressionElement::StringLiteral(s) = element {
+                        self.namespaces.push(s.value.to_string());
+                    }
+                }
+            }
+            _ => {
+                // dynamic namespace: ignore for now
+            }
+        }
+    }
+
+    fn handle_t_call<'a>(&mut self, expr: &CallExpression<'a>) {
+        let Some(first_arg) = expr.arguments.first() else {
+            return;
+        };
+
+        let kind = match first_arg {
+            // t("welcome")
+            Argument::StringLiteral(s) => UsageKind::Static(s.value.to_string()),
+
+            // t("auth.${action}")
+            Argument::TemplateLiteral(tpl) => classify_template_literal(tpl),
+
+            // t(key), t(buildKey()), etc.
+            _ => UsageKind::Dynamic,
+        };
+
+        self.push_usage(kind);
     }
 }
 
@@ -50,65 +91,13 @@ impl<'a> Visit<'a> for CallCollector {
     fn visit_call_expression(&mut self, expr: &CallExpression<'a>) {
         if let Expression::Identifier(ident) = &expr.callee {
             match ident.name.as_str() {
-                "useTranslation" => {
-                    if let Some(first_arg) = expr.arguments.first() {
-                        match first_arg {
-                            Argument::StringLiteral(s) => {
-                                self.namespaces.push(s.value.to_string());
-                            }
-                            Argument::ArrayExpression(arr) => {
-                                for element in &arr.elements {
-                                    if let oxc_ast::ast::ArrayExpressionElement::StringLiteral(s) =
-                                        element
-                                    {
-                                        self.namespaces.push(s.value.to_string());
-                                    }
-                                }
-                            }
-                            _ => {
-                                // dynamic namespace;
-                                // For initial version we can just ignore.
-                            }
-                        }
-                    }
-                }
-                "t" => {
-                    if let Some(first_arg) = expr.arguments.first() {
-                        match first_arg {
-                            // t("welcome")
-                            Argument::StringLiteral(s) => {
-                                self.push(UsageKind::Static(s.value.to_string()))
-                            }
-
-                            // t("auth.${action}")
-                            Argument::TemplateLiteral(tpl) => {
-                                let prefix = tpl
-                                    .quasis
-                                    .first()
-                                    .map(|q| q.value.raw.as_str())
-                                    .unwrap_or("");
-
-                                if tpl.expressions.is_empty() {
-                                    self.push(UsageKind::Static(prefix.to_string()))
-                                } else if prefix.is_empty() {
-                                    self.push(UsageKind::Dynamic);
-                                } else {
-                                    self.push(UsageKind::Prefix(prefix.to_string()));
-                                }
-                            }
-
-                            // t(key), t(buildKey()), etc.
-                            _ => {
-                                self.push(UsageKind::Dynamic);
-                            }
-                        }
-                    }
-                }
+                "useTranslation" => self.handle_use_translation(expr),
+                "t" => self.handle_t_call(expr),
                 _ => {}
             }
         }
 
-        oxc_ast_visit::walk::walk_call_expression(self, expr);
+        walk::walk_call_expression(self, expr);
     }
 }
 
@@ -171,4 +160,20 @@ fn parse_source_file(path: &Path) -> Result<Vec<Usage>, I18nError> {
 
     collector.visit_program(&ret.program);
     Ok(collector.usages)
+}
+
+fn classify_template_literal(tpl: &TemplateLiteral<'_>) -> UsageKind {
+    let prefix = tpl
+        .quasis
+        .first()
+        .map(|q| q.value.raw.as_str())
+        .unwrap_or("");
+
+    if tpl.expressions.is_empty() {
+        UsageKind::Static(prefix.to_string())
+    } else if prefix.is_empty() {
+        UsageKind::Dynamic
+    } else {
+        UsageKind::Prefix(prefix.to_string())
+    }
 }
