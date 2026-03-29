@@ -15,6 +15,22 @@ struct NamespaceAnalysis {
     dynamic_count: usize,
 }
 
+impl NamespaceAnalysis {
+    fn record_usage(&mut self, kind: &UsageKind) {
+        match kind {
+            UsageKind::Static(key) => {
+                self.used_static.insert(key.clone());
+            }
+            UsageKind::Prefix(prefix) => {
+                self.prefixes.insert(prefix.clone());
+            }
+            UsageKind::Dynamic => {
+                self.dynamic_count += 1;
+            }
+        }
+    }
+}
+
 pub struct UnusedKey {
     pub namespace: String,
     pub key: String,
@@ -32,19 +48,10 @@ pub fn analyze(locales: &[LocaleFile], usages: &[Usage]) -> AnalysisResult {
 
     for usage in usages {
         for namespace in &usage.namespaces {
-            let entry = usage_index.entry(namespace.clone()).or_default();
-
-            match &usage.kind {
-                UsageKind::Static(key) => {
-                    entry.used_static.insert(key.clone());
-                }
-                UsageKind::Prefix(prefix) => {
-                    entry.prefixes.insert(prefix.clone());
-                }
-                UsageKind::Dynamic => {
-                    entry.dynamic_count += 1;
-                }
-            }
+            usage_index
+                .entry(namespace.clone())
+                .or_default()
+                .record_usage(&usage.kind);
         }
     }
 
