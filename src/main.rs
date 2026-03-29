@@ -1,105 +1,15 @@
-use oxc_ast::ast::{Argument, CallExpression, Expression};
-use oxc_ast_visit::Visit;
 use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
 };
 
-use crate::core::locale::LocaleFile;
+use crate::core::{
+    locale::LocaleFile,
+    source::{Usage, UsageKind},
+};
 
 mod cli;
 mod core;
-
-enum UsageKind {
-    Static(String),
-    Prefix(String),
-    Dynamic,
-}
-
-struct Usage {
-    namespaces: Vec<String>,
-    kind: UsageKind,
-}
-
-struct CallCollector {
-    namespaces: Vec<String>,
-    usages: Vec<Usage>,
-}
-
-impl CallCollector {
-    fn push(&mut self, kind: UsageKind) {
-        self.usages.push(Usage {
-            namespaces: self.namespaces.clone(),
-            kind,
-        });
-    }
-}
-
-impl<'a> Visit<'a> for CallCollector {
-    fn visit_call_expression(&mut self, expr: &CallExpression<'a>) {
-        if let Expression::Identifier(ident) = &expr.callee {
-            match ident.name.as_str() {
-                "useTranslation" => {
-                    if let Some(first_arg) = expr.arguments.first() {
-                        match first_arg {
-                            Argument::StringLiteral(s) => {
-                                self.namespaces.push(s.value.to_string());
-                            }
-                            Argument::ArrayExpression(arr) => {
-                                for element in &arr.elements {
-                                    if let oxc_ast::ast::ArrayExpressionElement::StringLiteral(s) =
-                                        element
-                                    {
-                                        self.namespaces.push(s.value.to_string());
-                                    }
-                                }
-                            }
-                            _ => {
-                                // dynamic namespace;
-                                // For initial version we can just ignore.
-                            }
-                        }
-                    }
-                }
-                "t" => {
-                    if let Some(first_arg) = expr.arguments.first() {
-                        match first_arg {
-                            // t("welcome")
-                            Argument::StringLiteral(s) => {
-                                self.push(UsageKind::Static(s.value.to_string()))
-                            }
-
-                            // t("auth.${action}")
-                            Argument::TemplateLiteral(tpl) => {
-                                let prefix = tpl
-                                    .quasis
-                                    .first()
-                                    .map(|q| q.value.raw.as_str())
-                                    .unwrap_or("");
-
-                                if tpl.expressions.is_empty() {
-                                    self.push(UsageKind::Static(prefix.to_string()))
-                                } else if prefix.is_empty() {
-                                    self.push(UsageKind::Dynamic);
-                                } else {
-                                    self.push(UsageKind::Prefix(prefix.to_string()));
-                                }
-                            }
-
-                            // t(key), t(buildKey()), etc.
-                            _ => {
-                                self.push(UsageKind::Dynamic);
-                            }
-                        }
-                    }
-                }
-                _ => {}
-            }
-        }
-
-        oxc_ast_visit::walk::walk_call_expression(self, expr);
-    }
-}
 
 #[derive(Default)]
 struct NamespaceAnalysis {

@@ -1,5 +1,6 @@
-use serde_json::Value;
 use std::{collections::HashSet, fs::read_to_string, path::PathBuf};
+
+use serde_json::Value;
 use walkdir::WalkDir;
 
 pub struct LocaleFile {
