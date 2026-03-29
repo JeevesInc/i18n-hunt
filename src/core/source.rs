@@ -109,39 +109,18 @@ pub fn collect_usages(source_dir: &PathBuf) -> Result<Vec<Usage>, I18nError> {
     for entry in WalkDir::new(source_dir) {
         let entry = entry?;
 
-        if entry.file_type().is_file() {
-            let path = entry.path();
-
-            if !is_supported_source_file(path) {
-                continue;
-            }
-
-            let source_text = read_to_string(path)?;
-
-            let allocator = Allocator::default();
-            let source_type = SourceType::from_path(path).map_err(|_| I18nError::SourceParse {
-                path: path.to_path_buf(),
-                message: "failed to infer source type".to_string(),
-            })?;
-            let parser = Parser::new(&allocator, &source_text, source_type);
-            let ret = parser.parse();
-
-            if !ret.errors.is_empty() {
-                println!("Parse errors:");
-                for err in ret.errors {
-                    println!("{:?}", err);
-                }
-            }
-
-            let mut collector = CallCollector {
-                namespaces: Vec::new(),
-                usages: Vec::new(),
-            };
-
-            collector.visit_program(&ret.program);
-
-            all_usages.extend(collector.usages);
+        if !entry.file_type().is_file() {
+            continue;
         }
+
+        let path = entry.path();
+
+        if !is_supported_source_file(path) {
+            continue;
+        }
+
+        let file_usages = parse_source_file(path)?;
+        all_usages.extend(file_usages);
     }
 
     Ok(all_usages)
@@ -152,4 +131,38 @@ fn is_supported_source_file(path: &Path) -> bool {
         path.extension().and_then(|ext| ext.to_str()),
         Some("ts") | Some("tsx") | Some("js") | Some("jsx")
     )
+}
+
+fn parse_source_file(path: &Path) -> Result<Vec<Usage>, I18nError> {
+    let source_text = read_to_string(path)?;
+
+    let allocator = Allocator::default();
+    let source_type = SourceType::from_path(path).map_err(|_| I18nError::SourceParse {
+        path: path.to_path_buf(),
+        message: "failed to infer source type".to_string(),
+    })?;
+    let parser = Parser::new(&allocator, &source_text, source_type);
+    let ret = parser.parse();
+
+    if !ret.errors.is_empty() {
+        let message = ret
+            .errors
+            .into_iter()
+            .map(|err| err.to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        return Err(I18nError::SourceParse {
+            path: path.to_path_buf(),
+            message,
+        });
+    }
+
+    let mut collector = CallCollector {
+        namespaces: Vec::new(),
+        usages: Vec::new(),
+    };
+
+    collector.visit_program(&ret.program);
+    Ok(collector.usages)
 }
