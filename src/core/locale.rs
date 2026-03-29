@@ -21,8 +21,8 @@ pub fn load_locales(locales_dir: &PathBuf) -> Result<Vec<LocaleFile>, I18nError>
 
     for entry in WalkDir::new(&locales_dir) {
         let entry = entry?;
-        // TODO: add better check for json
-        if entry.file_type().is_file() {
+
+        if is_json_file(entry.path()) {
             let mut buf = String::new();
             let mut out = HashSet::new();
 
@@ -44,6 +44,10 @@ pub fn load_locales(locales_dir: &PathBuf) -> Result<Vec<LocaleFile>, I18nError>
     }
 
     Ok(locales)
+}
+
+fn is_json_file(path: &Path) -> bool {
+    matches!(path.extension().and_then(|ext| ext.to_str()), Some("json"))
 }
 
 fn flatten_into(value: &Value, buf: &mut String, out: &mut HashSet<String>) {
