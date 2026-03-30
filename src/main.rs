@@ -4,11 +4,6 @@ mod cli;
 mod core;
 
 fn main() {
-    // TODO: handle file case
-    // TODO: better report
-    // TODO: fail on unused
-    // TODO: improve dynamic
-    // TODO: consider root (by file - default or paramenter) to get the namespace
     // TODO: improve code docs
     // TODO: improve CLI docs
 
