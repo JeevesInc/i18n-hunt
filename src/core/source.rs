@@ -1,3 +1,8 @@
+//! Source scanning for translation namespaces and key usages.
+//!
+//! JavaScript and TypeScript files are parsed into an AST and inspected for
+//! `useTranslation(...)` and `t(...)` calls.
+
 use std::{
     fs::read_to_string,
     path::{Path, PathBuf},
@@ -12,14 +17,21 @@ use walkdir::WalkDir;
 
 use crate::core::error::I18nError;
 
+/// Classification of how precisely a translation key usage is known.
 pub enum UsageKind {
+    /// Exact key from a string literal.
     Static(String),
+    /// Prefix extracted from a template literal with expressions.
     Prefix(String),
+    /// Key is dynamic and cannot be resolved statically.
     Dynamic,
 }
 
+/// A discovered translation key usage scoped to one or more namespaces.
 pub struct Usage {
+    /// Namespaces in scope when the usage was recorded.
     pub namespaces: Vec<String>,
+    /// The usage classification.
     pub kind: UsageKind,
 }
 
@@ -60,6 +72,9 @@ impl CallCollector {
     }
 }
 
+/// Extracts namespaces from a `useTranslation(...)` call expression.
+///
+/// Dynamic namespace expressions are ignored and return an empty namespace list.
 fn extract_namespaces(expr: &CallExpression<'_>) -> Vec<String> {
     let Some(first_arg) = expr.arguments.first() else {
         return Vec::new();
@@ -108,6 +123,21 @@ impl<'a> Visit<'a> for CallCollector {
     }
 }
 
+/// Recursively collects translation key usages from supported source files.
+///
+/// Supported extensions are `.ts`, `.tsx`, `.js`, and `.jsx`.
+///
+/// # Arguments
+///
+/// * `source_dir` - Root directory to scan.
+///
+/// # Returns
+///
+/// A flat vector of discovered [`Usage`] entries.
+///
+/// # Errors
+///
+/// Returns [`I18nError`] when traversal, file reading, or source parsing fails.
 pub fn collect_usages(source_dir: &PathBuf) -> Result<Vec<Usage>, I18nError> {
     let mut all_usages: Vec<Usage> = vec![];
 
@@ -131,6 +161,7 @@ pub fn collect_usages(source_dir: &PathBuf) -> Result<Vec<Usage>, I18nError> {
     Ok(all_usages)
 }
 
+/// Returns whether `path` is a supported source file extension.
 fn is_supported_source_file(path: &Path) -> bool {
     matches!(
         path.extension().and_then(|ext| ext.to_str()),
@@ -138,6 +169,11 @@ fn is_supported_source_file(path: &Path) -> bool {
     )
 }
 
+/// Parses one source file and extracts translation usages from its AST.
+///
+/// # Errors
+///
+/// Returns [`I18nError`] if source type detection or parsing fails.
 fn parse_source_file(path: &Path) -> Result<Vec<Usage>, I18nError> {
     let source_text = read_to_string(path)?;
 
@@ -169,6 +205,9 @@ fn parse_source_file(path: &Path) -> Result<Vec<Usage>, I18nError> {
     Ok(collector.usages)
 }
 
+/// Classifies template literal usage into static key, prefix, or dynamic usage.
+///
+/// A non-empty leading quasi with expressions is treated as a stable prefix.
 fn classify_template_literal(tpl: &TemplateLiteral<'_>) -> UsageKind {
     let prefix = tpl
         .quasis
