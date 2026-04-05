@@ -1,0 +1,16 @@
+{
+  "title": "Login",
+  "description": "Access your account",
+  "form": {
+    "email": "Email",
+    "password": "Password",
+    "submit": "Sign in"
+  },
+  "errors": {
+    "invalidCredentials": "Invalid email or password",
+    "network": "Network error"
+  },
+  "legacy": {
+    "oldLoginMessage": "Welcome back"
+  }
+}
