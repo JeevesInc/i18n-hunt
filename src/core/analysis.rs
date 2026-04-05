@@ -1,3 +1,5 @@
+//! Analysis logic that maps locale keys to observed translation usages.
+
 use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
@@ -36,15 +38,33 @@ impl NamespaceAnalysis {
 }
 
 pub struct UnusedKey {
+    /// Namespace in which the unused key is defined.
     pub namespace: String,
+    /// Flattened translation key that appears unused.
     pub key: String,
+    /// Locale file path where the key is defined.
     pub path: PathBuf,
 }
 
+/// Result of a full unused-key analysis run.
 pub struct AnalysisResult {
+    /// All locale keys not matched by observed usage.
     pub unused_keys: Vec<UnusedKey>,
 }
 
+/// Computes unused translation keys from locale definitions and source usages.
+///
+/// A key is considered protected when a static key usage matches exactly, or
+/// when a template-literal usage contributes a prefix that the key starts with.
+///
+/// # Arguments
+///
+/// * `locales` - Locale files with namespaces and flattened keys.
+/// * `usages` - Collected translation usages from source scanning.
+///
+/// # Returns
+///
+/// An [`AnalysisResult`] containing keys that appear to be unused.
 pub fn analyze(locales: &[LocaleFile], usages: &[Usage]) -> AnalysisResult {
     // TODO: maybe we should check these clones?
 
