@@ -37,25 +37,7 @@ impl CallCollector {
     }
 
     fn handle_use_translation<'a>(&mut self, expr: &CallExpression<'a>) {
-        let Some(first_arg) = expr.arguments.first() else {
-            return;
-        };
-
-        match first_arg {
-            Argument::StringLiteral(s) => {
-                self.namespaces.push(s.value.to_string());
-            }
-            Argument::ArrayExpression(arr) => {
-                for element in &arr.elements {
-                    if let oxc_ast::ast::ArrayExpressionElement::StringLiteral(s) = element {
-                        self.namespaces.push(s.value.to_string());
-                    }
-                }
-            }
-            _ => {
-                // dynamic namespace: ignore for now
-            }
-        }
+        self.namespaces = extract_namespaces(expr);
     }
 
     fn handle_t_call<'a>(&mut self, expr: &CallExpression<'a>) {
@@ -75,6 +57,31 @@ impl CallCollector {
         };
 
         self.push_usage(kind);
+    }
+}
+
+fn extract_namespaces(expr: &CallExpression<'_>) -> Vec<String> {
+    let Some(first_arg) = expr.arguments.first() else {
+        return Vec::new();
+    };
+
+    match first_arg {
+        Argument::StringLiteral(s) => vec![s.value.to_string()],
+        Argument::ArrayExpression(arr) => arr
+            .elements
+            .iter()
+            .filter_map(|element| {
+                if let oxc_ast::ast::ArrayExpressionElement::StringLiteral(s) = element {
+                    Some(s.value.to_string())
+                } else {
+                    None
+                }
+            })
+            .collect(),
+        _ => {
+            // dynamic namespace: ignore for now
+            Vec::new()
+        }
     }
 }
 
