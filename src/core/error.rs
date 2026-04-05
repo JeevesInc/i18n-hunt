@@ -1,12 +1,20 @@
+//! Error types used by the i18n analysis pipeline.
+
 use core::fmt;
 use std::{io, path::PathBuf};
 
+/// Unified error enum for filesystem, parsing, and path-derivation failures.
 #[derive(Debug)]
 pub enum I18nError {
+    /// A low-level I/O error.
     Io(io::Error),
+    /// Invalid JSON while reading a locale file.
     Json(serde_json::Error),
+    /// Invalid path relationship or normalization issue.
     InvalidPath { path: PathBuf, message: String },
+    /// Source file parsing failure.
     SourceParse { path: PathBuf, message: String },
+    /// Recursive directory traversal failure.
     WalkDir(String),
 }
 
