@@ -1,3 +1,8 @@
+//! Locale-file loading and key flattening utilities.
+//!
+//! Locale JSON objects are flattened into dotted keys such as
+//! `auth.login.title`.
+
 use std::{
     collections::HashSet,
     fs::read_to_string,
@@ -9,9 +14,13 @@ use walkdir::WalkDir;
 
 use crate::core::error::I18nError;
 
+/// Parsed locale file metadata and extracted key set.
 pub struct LocaleFile {
+    /// Namespace derived from the file path relative to the locale root.
     pub namespace: String,
+    /// Path to the locale file.
     pub path: PathBuf,
+    /// Flattened key paths whose terminal values are strings.
     pub keys: HashSet<String>,
 }
 
@@ -36,7 +45,20 @@ impl LocaleFile {
     }
 }
 
-// TODO: handle single file?
+/// Recursively loads locale JSON files from `dir`.
+///
+/// # Arguments
+///
+/// * `dir` - Root locale directory.
+///
+/// # Returns
+///
+/// Parsed locale files with namespaces and flattened keys.
+///
+/// # Errors
+///
+/// Returns [`I18nError`] if traversal, file reading, parsing, or namespace
+/// derivation fails.
 pub fn load_locales(dir: &PathBuf) -> Result<Vec<LocaleFile>, I18nError> {
     let mut locales: Vec<LocaleFile> = vec![];
 
@@ -54,10 +76,14 @@ pub fn load_locales(dir: &PathBuf) -> Result<Vec<LocaleFile>, I18nError> {
     Ok(locales)
 }
 
+/// Returns whether a path points to a `.json` file.
 fn is_json_file(path: &Path) -> bool {
     matches!(path.extension().and_then(|ext| ext.to_str()), Some("json"))
 }
 
+/// Flattens nested JSON objects into dotted keys.
+///
+/// Only terminal string values are emitted as valid translation keys.
 fn flatten_into(value: &Value, buf: &mut String, out: &mut HashSet<String>) {
     match value {
         Value::Object(map) => {
@@ -84,6 +110,13 @@ fn flatten_into(value: &Value, buf: &mut String, out: &mut HashSet<String>) {
     }
 }
 
+/// Derives a locale namespace from `file` relative to `base`.
+///
+/// The `.json` extension is removed and separators are normalized to `/`.
+///
+/// # Errors
+///
+/// Returns [`I18nError::InvalidPath`] when `file` is not under `base`.
 fn derive_namespace(base: &Path, file: &Path) -> Result<String, I18nError> {
     let relative = file
         .strip_prefix(base)
