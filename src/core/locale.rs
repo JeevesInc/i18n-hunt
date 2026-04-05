@@ -42,6 +42,10 @@ pub fn load_locales(dir: &PathBuf) -> Result<Vec<LocaleFile>, I18nError> {
 
     for entry in WalkDir::new(&dir) {
         let entry = entry?;
+        if !entry.file_type().is_file() {
+            continue;
+        }
+
         let path = entry.path();
 
         if is_json_file(path) {
