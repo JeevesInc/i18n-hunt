@@ -1,29 +1,19 @@
 {
-    "title": "Locations",
-    "description": "Manage organization locations",
-    "table": {
-        "name": "Location name",
-        "address": "Address",
-        "country": "Country",
-        "manager": "Manager"
-    },
-    "actions": {
-        "create": "Create location",
-        "edit": "Edit location",
-        "delete": "Delete location"
-    },
-    "status": {
-        "active": "Active",
-        "inactive": "Inactive",
-        "archived": "Archived"
-    },
-    "notifications": {
-        "created": "Location created",
-        "updated": "Location updated",
-        "deleted": "Location deleted"
-    },
-    "legacy": {
-        "oldLocationTitle": "Old locations page",
-        "oldLocationButton": "Old location button"
-    }
+  "title": "Locations",
+  "description": "Manage organization locations",
+  "table": {
+    "name": "Location name",
+    "address": "Address"
+  },
+  "actions": {
+    "create": "Create location",
+    "edit": "Edit location"
+  },
+  "notifications": {
+    "created": "Location created",
+    "deleted": "Location deleted"
+  },
+  "legacy": {
+    "oldLocationTitle": "Old locations page"
+  }
 }
