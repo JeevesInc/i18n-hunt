@@ -108,7 +108,6 @@ Each result shows:
 
 Planned improvements (subject to change):
 
-- Better handling of dynamic keys
 - Package manager wrapper (run via `npm`, `pnpm`, `yarn` / integrate with CI)
 - Improved output formatting (DX)
 - Config file (`i18n-hunt.config`)
