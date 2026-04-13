@@ -1,0 +1,6 @@
+{
+  "transOnly": "Used by <Trans />",
+  "legacy": {
+    "oldTransLabel": "Old label"
+  }
+}
