@@ -4,12 +4,17 @@
 //! `useTranslation(...)` and `t(...)` calls.
 
 use std::{
+    collections::{BTreeSet, HashMap, HashSet},
     fs::read_to_string,
     path::{Path, PathBuf},
 };
 
 use oxc_allocator::Allocator;
-use oxc_ast::ast::{Argument, CallExpression, Expression, TemplateLiteral};
+use oxc_ast::ast::{
+    Argument, BindingPattern, CallExpression, ConditionalExpression, Expression, Function,
+    FunctionBody, Program, Statement, TemplateLiteral, VariableDeclaration,
+    VariableDeclarationKind,
+};
 use oxc_ast_visit::{Visit, walk};
 use oxc_parser::Parser;
 use oxc_span::SourceType;
@@ -35,17 +40,108 @@ pub struct Usage {
     pub kind: UsageKind,
 }
 
+#[derive(Clone, Default)]
+struct InferredValue {
+    statics: BTreeSet<String>,
+    prefixes: BTreeSet<String>,
+    dynamic: bool,
+}
+
+impl InferredValue {
+    fn dynamic() -> Self {
+        Self {
+            statics: BTreeSet::new(),
+            prefixes: BTreeSet::new(),
+            dynamic: true,
+        }
+    }
+
+    fn from_usage_kind(kind: UsageKind) -> Self {
+        let mut value = Self::default();
+
+        match kind {
+            UsageKind::Static(key) => {
+                value.statics.insert(key);
+            }
+            UsageKind::Prefix(prefix) => {
+                value.prefixes.insert(prefix);
+            }
+            UsageKind::Dynamic => {
+                value.dynamic = true;
+            }
+        }
+
+        value
+    }
+
+    fn merge(&mut self, other: Self) {
+        self.statics.extend(other.statics);
+        self.prefixes.extend(other.prefixes);
+        self.dynamic |= other.dynamic;
+    }
+
+    fn into_usage_kinds(self) -> Vec<UsageKind> {
+        let mut kinds = Vec::new();
+
+        for key in self.statics {
+            kinds.push(UsageKind::Static(key));
+        }
+
+        for prefix in self.prefixes {
+            kinds.push(UsageKind::Prefix(prefix));
+        }
+
+        if self.dynamic || kinds.is_empty() {
+            kinds.push(UsageKind::Dynamic);
+        }
+
+        kinds
+    }
+}
+
 struct CallCollector {
     namespaces: Vec<String>,
     usages: Vec<Usage>,
+    function_values: HashMap<String, InferredValue>,
+    scopes: Vec<HashMap<String, InferredValue>>,
 }
 
 impl CallCollector {
+    fn new(function_values: HashMap<String, InferredValue>) -> Self {
+        Self {
+            namespaces: Vec::new(),
+            usages: Vec::new(),
+            function_values,
+            scopes: vec![HashMap::new()],
+        }
+    }
+
     fn push_usage(&mut self, kind: UsageKind) {
         self.usages.push(Usage {
             namespaces: self.namespaces.clone(),
             kind,
         });
+    }
+
+    fn push_scope(&mut self) {
+        self.scopes.push(HashMap::new());
+    }
+
+    fn pop_scope(&mut self) {
+        self.scopes.pop();
+    }
+
+    fn bind_local(&mut self, name: String, value: InferredValue) {
+        if let Some(scope) = self.scopes.last_mut() {
+            scope.insert(name, value);
+        }
+    }
+
+    fn resolve_local(&self, name: &str) -> Option<InferredValue> {
+        self.scopes
+            .iter()
+            .rev()
+            .find_map(|scope| scope.get(name).cloned())
     }
 
     fn handle_use_translation<'a>(&mut self, expr: &CallExpression<'a>) {
@@ -57,18 +153,81 @@ impl CallCollector {
             return;
         };
 
-        let kind = match first_arg {
-            // t("welcome")
-            Argument::StringLiteral(s) => UsageKind::Static(s.value.to_string()),
+        let inferred = self.infer_argument(first_arg);
 
-            // t("auth.${action}")
-            Argument::TemplateLiteral(tpl) => classify_template_literal(tpl),
+        for kind in inferred.into_usage_kinds() {
+            self.push_usage(kind);
+        }
+    }
 
-            // t(key), t(buildKey()), etc.
-            _ => UsageKind::Dynamic,
+    fn track_const_bindings<'a>(&mut self, decl: &VariableDeclaration<'a>) {
+        if decl.kind != VariableDeclarationKind::Const {
+            return;
+        }
+
+        for declarator in &decl.declarations {
+            let Some(init) = &declarator.init else {
+                continue;
+            };
+
+            let BindingPattern::BindingIdentifier(binding) = &declarator.id else {
+                continue;
+            };
+
+            let inferred = self.infer_expression(init);
+            self.bind_local(binding.name.to_string(), inferred);
+        }
+    }
+
+    fn infer_argument<'a>(&self, arg: &Argument<'a>) -> InferredValue {
+        match arg {
+            Argument::StringLiteral(s) => {
+                InferredValue::from_usage_kind(UsageKind::Static(s.value.to_string()))
+            }
+            Argument::TemplateLiteral(tpl) => {
+                InferredValue::from_usage_kind(classify_template_literal(tpl))
+            }
+            Argument::Identifier(ident) => self
+                .resolve_local(ident.name.as_str())
+                .unwrap_or_else(InferredValue::dynamic),
+            Argument::CallExpression(call) => self.infer_call(call),
+            Argument::ConditionalExpression(cond) => self.infer_conditional(cond),
+            _ => InferredValue::dynamic(),
+        }
+    }
+
+    fn infer_expression<'a>(&self, expr: &Expression<'a>) -> InferredValue {
+        match expr {
+            Expression::StringLiteral(s) => {
+                InferredValue::from_usage_kind(UsageKind::Static(s.value.to_string()))
+            }
+            Expression::TemplateLiteral(tpl) => {
+                InferredValue::from_usage_kind(classify_template_literal(tpl))
+            }
+            Expression::Identifier(ident) => self
+                .resolve_local(ident.name.as_str())
+                .unwrap_or_else(InferredValue::dynamic),
+            Expression::CallExpression(call) => self.infer_call(call),
+            Expression::ConditionalExpression(cond) => self.infer_conditional(cond),
+            _ => InferredValue::dynamic(),
+        }
+    }
+
+    fn infer_conditional<'a>(&self, cond: &ConditionalExpression<'a>) -> InferredValue {
+        let mut inferred = self.infer_expression(&cond.consequent);
+        inferred.merge(self.infer_expression(&cond.alternate));
+        inferred
+    }
+
+    fn infer_call<'a>(&self, call: &CallExpression<'a>) -> InferredValue {
+        let Expression::Identifier(ident) = &call.callee else {
+            return InferredValue::dynamic();
         };
 
-        self.push_usage(kind);
+        self.function_values
+            .get(ident.name.as_str())
+            .cloned()
+            .unwrap_or_else(InferredValue::dynamic)
     }
 }
 
@@ -100,16 +259,24 @@ fn extract_namespaces(expr: &CallExpression<'_>) -> Vec<String> {
     }
 }
 
-impl Default for CallCollector {
-    fn default() -> Self {
-        Self {
-            namespaces: Vec::new(),
-            usages: Vec::new(),
-        }
-    }
-}
-
 impl<'a> Visit<'a> for CallCollector {
+    fn visit_block_statement(&mut self, block: &oxc_ast::ast::BlockStatement<'a>) {
+        self.push_scope();
+        walk::walk_block_statement(self, block);
+        self.pop_scope();
+    }
+
+    fn visit_function_body(&mut self, function_body: &FunctionBody<'a>) {
+        self.push_scope();
+        walk::walk_function_body(self, function_body);
+        self.pop_scope();
+    }
+
+    fn visit_variable_declaration(&mut self, decl: &VariableDeclaration<'a>) {
+        self.track_const_bindings(decl);
+        walk::walk_variable_declaration(self, decl);
+    }
+
     fn visit_call_expression(&mut self, expr: &CallExpression<'a>) {
         if let Expression::Identifier(ident) = &expr.callee {
             match ident.name.as_str() {
@@ -199,10 +366,156 @@ fn parse_source_file(path: &Path) -> Result<Vec<Usage>, I18nError> {
         });
     }
 
-    let mut collector = CallCollector::default();
+    let function_values = infer_function_values(&ret.program);
+    let mut collector = CallCollector::new(function_values);
 
     collector.visit_program(&ret.program);
     Ok(collector.usages)
+}
+
+fn infer_function_values<'a>(program: &'a Program<'a>) -> HashMap<String, InferredValue> {
+    let functions = collect_function_declarations(program);
+    let mut cache = HashMap::new();
+    let mut visiting = HashSet::new();
+
+    for name in functions.keys() {
+        let inferred = infer_function_by_name(name, &functions, &mut cache, &mut visiting);
+        cache.insert(name.clone(), inferred);
+    }
+
+    cache
+}
+
+fn collect_function_declarations<'a>(
+    program: &'a Program<'a>,
+) -> HashMap<String, &'a Function<'a>> {
+    let mut functions = HashMap::new();
+
+    for stmt in &program.body {
+        if let Statement::FunctionDeclaration(function) = stmt {
+            if let Some(id) = &function.id {
+                functions.insert(id.name.to_string(), function.as_ref());
+            }
+        }
+    }
+
+    functions
+}
+
+fn infer_function_by_name<'a>(
+    name: &str,
+    functions: &HashMap<String, &'a Function<'a>>,
+    cache: &mut HashMap<String, InferredValue>,
+    visiting: &mut HashSet<String>,
+) -> InferredValue {
+    if let Some(existing) = cache.get(name) {
+        return existing.clone();
+    }
+
+    if !visiting.insert(name.to_string()) {
+        return InferredValue::dynamic();
+    }
+
+    let inferred = functions
+        .get(name)
+        .map(|function| infer_function_returns(function, functions, cache, visiting))
+        .unwrap_or_else(InferredValue::dynamic);
+
+    visiting.remove(name);
+
+    inferred
+}
+
+fn infer_function_returns<'a>(
+    function: &'a Function<'a>,
+    functions: &HashMap<String, &'a Function<'a>>,
+    cache: &mut HashMap<String, InferredValue>,
+    visiting: &mut HashSet<String>,
+) -> InferredValue {
+    let mut out = InferredValue::default();
+
+    let Some(body) = &function.body else {
+        return InferredValue::dynamic();
+    };
+
+    for statement in &body.statements {
+        infer_returns_from_statement(statement, functions, cache, visiting, &mut out);
+    }
+
+    if out.statics.is_empty() && out.prefixes.is_empty() && !out.dynamic {
+        out.dynamic = true;
+    }
+
+    out
+}
+
+fn infer_returns_from_statement<'a>(
+    statement: &'a Statement<'a>,
+    functions: &HashMap<String, &'a Function<'a>>,
+    cache: &mut HashMap<String, InferredValue>,
+    visiting: &mut HashSet<String>,
+    out: &mut InferredValue,
+) {
+    match statement {
+        Statement::ReturnStatement(ret) => {
+            if let Some(argument) = &ret.argument {
+                out.merge(infer_expression_with_functions(
+                    argument, functions, cache, visiting,
+                ));
+            }
+        }
+        Statement::BlockStatement(block) => {
+            for inner in &block.body {
+                infer_returns_from_statement(inner, functions, cache, visiting, out);
+            }
+        }
+        Statement::IfStatement(if_statement) => {
+            infer_returns_from_statement(&if_statement.consequent, functions, cache, visiting, out);
+
+            if let Some(alternate) = &if_statement.alternate {
+                infer_returns_from_statement(alternate, functions, cache, visiting, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn infer_expression_with_functions<'a>(
+    expression: &'a Expression<'a>,
+    functions: &HashMap<String, &'a Function<'a>>,
+    cache: &mut HashMap<String, InferredValue>,
+    visiting: &mut HashSet<String>,
+) -> InferredValue {
+    match expression {
+        Expression::StringLiteral(s) => {
+            InferredValue::from_usage_kind(UsageKind::Static(s.value.to_string()))
+        }
+        Expression::TemplateLiteral(tpl) => {
+            InferredValue::from_usage_kind(classify_template_literal(tpl))
+        }
+        Expression::ConditionalExpression(cond) => {
+            let mut out =
+                infer_expression_with_functions(&cond.consequent, functions, cache, visiting);
+            out.merge(infer_expression_with_functions(
+                &cond.alternate,
+                functions,
+                cache,
+                visiting,
+            ));
+            out
+        }
+        Expression::CallExpression(call) => {
+            let Expression::Identifier(ident) = &call.callee else {
+                return InferredValue::dynamic();
+            };
+
+            let name = ident.name.as_str();
+            let inferred = infer_function_by_name(name, functions, cache, visiting);
+            cache.insert(name.to_string(), inferred.clone());
+            inferred
+        }
+        _ => InferredValue::dynamic(),
+    }
 }
 
 /// Classifies template literal usage into static key, prefix, or dynamic usage.
