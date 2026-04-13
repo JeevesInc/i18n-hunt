@@ -12,8 +12,8 @@ use std::{
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{
     Argument, BindingPattern, CallExpression, ConditionalExpression, Expression, Function,
-    FunctionBody, Program, Statement, TemplateLiteral, VariableDeclaration,
-    VariableDeclarationKind,
+    FunctionBody, ObjectPropertyKind, Program, PropertyKey, Statement, TemplateLiteral,
+    VariableDeclaration, VariableDeclarationKind,
 };
 use oxc_ast_visit::{Visit, walk};
 use oxc_parser::Parser;
@@ -156,19 +156,25 @@ impl CallCollector {
         let Some(first_arg) = expr.arguments.first() else {
             return;
         };
+        let ns_override = expr.arguments.get(1).and_then(extract_ns_override);
 
         let inferred = self.infer_argument(first_arg);
 
         for kind in inferred.into_usage_kinds() {
-            self.push_resolved_usage(kind);
+            self.push_resolved_usage(kind, ns_override.as_deref());
         }
     }
 
-    fn push_resolved_usage(&mut self, kind: UsageKind) {
+    fn push_resolved_usage(&mut self, kind: UsageKind, ns_override: Option<&str>) {
         match kind {
             UsageKind::Static(key) => {
                 if let Some((ns, raw_key)) = split_colon_namespace(&key) {
                     self.push_usage_with_namespaces(vec![ns], UsageKind::Static(raw_key));
+                } else if let Some(override_ns) = ns_override {
+                    self.push_usage_with_namespaces(
+                        vec![override_ns.to_string()],
+                        UsageKind::Static(key),
+                    );
                 } else {
                     self.push_usage(UsageKind::Static(key));
                 }
@@ -176,12 +182,24 @@ impl CallCollector {
             UsageKind::Prefix(prefix) => {
                 if let Some((ns, raw_prefix)) = split_colon_namespace(&prefix) {
                     self.push_usage_with_namespaces(vec![ns], UsageKind::Prefix(raw_prefix));
+                } else if let Some(override_ns) = ns_override {
+                    self.push_usage_with_namespaces(
+                        vec![override_ns.to_string()],
+                        UsageKind::Prefix(prefix),
+                    );
                 } else {
                     self.push_usage(UsageKind::Prefix(prefix));
                 }
             }
             UsageKind::Dynamic => {
-                self.push_usage(UsageKind::Dynamic);
+                if let Some(override_ns) = ns_override {
+                    self.push_usage_with_namespaces(
+                        vec![override_ns.to_string()],
+                        UsageKind::Dynamic,
+                    );
+                } else {
+                    self.push_usage(UsageKind::Dynamic);
+                }
             }
         }
     }
@@ -571,4 +589,47 @@ fn split_colon_namespace(value: &str) -> Option<(String, String)> {
     }
 
     Some((namespace.to_string(), key.to_string()))
+}
+
+fn extract_ns_override(arg: &Argument<'_>) -> Option<String> {
+    let Argument::ObjectExpression(obj) = arg else {
+        return None;
+    };
+
+    for property in &obj.properties {
+        let ObjectPropertyKind::ObjectProperty(prop) = property else {
+            continue;
+        };
+
+        if prop.computed || prop.method {
+            continue;
+        }
+
+        if !property_key_is_ns(&prop.key) {
+            continue;
+        }
+
+        match &prop.value {
+            Expression::StringLiteral(s) => return Some(s.value.to_string()),
+            Expression::TemplateLiteral(tpl) if tpl.expressions.is_empty() => {
+                let value = tpl
+                    .quasis
+                    .first()
+                    .map(|q| q.value.raw.as_str())
+                    .unwrap_or("");
+                return Some(value.to_string());
+            }
+            _ => return None,
+        }
+    }
+
+    None
+}
+
+fn property_key_is_ns(key: &PropertyKey<'_>) -> bool {
+    match key {
+        PropertyKey::StaticIdentifier(ident) => ident.name == "ns",
+        PropertyKey::StringLiteral(string) => string.value == "ns",
+        _ => false,
+    }
 }
