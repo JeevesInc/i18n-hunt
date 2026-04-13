@@ -10,6 +10,7 @@
     "invalidCredentials": "Invalid email or password",
     "network": "Network error"
   },
+  "colonUsed": "Used by explicit namespace syntax",
   "legacy": {
     "oldLoginMessage": "Welcome back"
   }
