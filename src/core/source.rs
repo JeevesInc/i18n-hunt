@@ -38,6 +38,10 @@ pub struct Usage {
     pub namespaces: Vec<String>,
     /// The usage classification.
     pub kind: UsageKind,
+    /// Source file where the usage was found.
+    pub path: PathBuf,
+    /// 1-based source line where the usage was found.
+    pub line: usize,
 }
 
 #[derive(Clone, Default)]
@@ -104,27 +108,47 @@ struct CallCollector {
     usages: Vec<Usage>,
     function_values: HashMap<String, InferredValue>,
     scopes: Vec<HashMap<String, InferredValue>>,
+    file_path: PathBuf,
+    line_starts: Vec<usize>,
 }
 
 impl CallCollector {
-    fn new(function_values: HashMap<String, InferredValue>) -> Self {
+    fn new(
+        function_values: HashMap<String, InferredValue>,
+        file_path: PathBuf,
+        source_text: &str,
+    ) -> Self {
         Self {
             namespaces: Vec::new(),
             usages: Vec::new(),
             function_values,
             scopes: vec![HashMap::new()],
+            file_path,
+            line_starts: collect_line_starts(source_text),
         }
     }
 
-    fn push_usage(&mut self, kind: UsageKind) {
+    fn push_usage(&mut self, kind: UsageKind, line: usize) {
         self.usages.push(Usage {
             namespaces: self.namespaces.clone(),
             kind,
+            path: self.file_path.clone(),
+            line,
         });
     }
 
-    fn push_usage_with_namespaces(&mut self, namespaces: Vec<String>, kind: UsageKind) {
-        self.usages.push(Usage { namespaces, kind });
+    fn push_usage_with_namespaces(
+        &mut self,
+        namespaces: Vec<String>,
+        kind: UsageKind,
+        line: usize,
+    ) {
+        self.usages.push(Usage {
+            namespaces,
+            kind,
+            path: self.file_path.clone(),
+            line,
+        });
     }
 
     fn push_scope(&mut self) {
@@ -157,38 +181,41 @@ impl CallCollector {
             return;
         };
         let ns_override = expr.arguments.get(1).and_then(extract_ns_override);
+        let line = self.line_for_offset(expr.span.start);
 
         let inferred = self.infer_argument(first_arg);
 
         for kind in inferred.into_usage_kinds() {
-            self.push_resolved_usage(kind, ns_override.as_deref());
+            self.push_resolved_usage(kind, ns_override.as_deref(), line);
         }
     }
 
-    fn push_resolved_usage(&mut self, kind: UsageKind, ns_override: Option<&str>) {
+    fn push_resolved_usage(&mut self, kind: UsageKind, ns_override: Option<&str>, line: usize) {
         match kind {
             UsageKind::Static(key) => {
                 if let Some((ns, raw_key)) = split_colon_namespace(&key) {
-                    self.push_usage_with_namespaces(vec![ns], UsageKind::Static(raw_key));
+                    self.push_usage_with_namespaces(vec![ns], UsageKind::Static(raw_key), line);
                 } else if let Some(override_ns) = ns_override {
                     self.push_usage_with_namespaces(
                         vec![override_ns.to_string()],
                         UsageKind::Static(key),
+                        line,
                     );
                 } else {
-                    self.push_usage(UsageKind::Static(key));
+                    self.push_usage(UsageKind::Static(key), line);
                 }
             }
             UsageKind::Prefix(prefix) => {
                 if let Some((ns, raw_prefix)) = split_colon_namespace(&prefix) {
-                    self.push_usage_with_namespaces(vec![ns], UsageKind::Prefix(raw_prefix));
+                    self.push_usage_with_namespaces(vec![ns], UsageKind::Prefix(raw_prefix), line);
                 } else if let Some(override_ns) = ns_override {
                     self.push_usage_with_namespaces(
                         vec![override_ns.to_string()],
                         UsageKind::Prefix(prefix),
+                        line,
                     );
                 } else {
-                    self.push_usage(UsageKind::Prefix(prefix));
+                    self.push_usage(UsageKind::Prefix(prefix), line);
                 }
             }
             UsageKind::Dynamic => {
@@ -196,11 +223,21 @@ impl CallCollector {
                     self.push_usage_with_namespaces(
                         vec![override_ns.to_string()],
                         UsageKind::Dynamic,
+                        line,
                     );
                 } else {
-                    self.push_usage(UsageKind::Dynamic);
+                    self.push_usage(UsageKind::Dynamic, line);
                 }
             }
+        }
+    }
+
+    fn line_for_offset(&self, offset: u32) -> usize {
+        let offset = offset as usize;
+
+        match self.line_starts.binary_search(&offset) {
+            Ok(index) => index + 1,
+            Err(index) => index.max(1),
         }
     }
 
@@ -417,7 +454,7 @@ fn parse_source_file(path: &Path) -> Result<Vec<Usage>, I18nError> {
     }
 
     let function_values = infer_function_values(&ret.program);
-    let mut collector = CallCollector::new(function_values);
+    let mut collector = CallCollector::new(function_values, path.to_path_buf(), &source_text);
 
     collector.visit_program(&ret.program);
     Ok(collector.usages)
@@ -595,6 +632,18 @@ fn split_colon_namespace(value: &str) -> Option<(String, String)> {
     }
 
     Some((namespace.to_string(), key.to_string()))
+}
+
+fn collect_line_starts(source_text: &str) -> Vec<usize> {
+    let mut starts = vec![0];
+
+    for (index, byte) in source_text.bytes().enumerate() {
+        if byte == b'\n' {
+            starts.push(index + 1);
+        }
+    }
+
+    starts
 }
 
 fn extract_ns_override(arg: &Argument<'_>) -> Option<String> {

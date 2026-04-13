@@ -12,6 +12,7 @@ export function LoginPage() {
 
     const dynamicKey = getErrorKey();
     t(dynamicKey);
+    t(getRuntimeErrorKey());
 
     return null;
 }
@@ -20,4 +21,8 @@ function getErrorKey() {
     return Math.random() > 0.5
         ? "errors.network"
         : "errors.invalidCredentials";
+}
+
+function getRuntimeErrorKey() {
+    return window.location.hash;
 }
