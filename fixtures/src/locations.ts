@@ -6,6 +6,7 @@ export function LocationsPage() {
     t("title");
     t("table.name");
     t("Auth/Login:colonUsed");
+    t("optionNsOnly", { ns: "Auth/Login" });
 
     const action = "create";
     t(`actions.${action}`);

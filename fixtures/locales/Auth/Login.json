@@ -11,6 +11,7 @@
     "network": "Network error"
   },
   "colonUsed": "Used by explicit namespace syntax",
+  "optionNsOnly": "Used by t(key, { ns }) override",
   "legacy": {
     "oldLoginMessage": "Welcome back"
   }
