@@ -5,6 +5,7 @@ export function LocationsPage() {
 
     t("title");
     t("table.name");
+    t("Auth/Login:colonUsed");
 
     const action = "create";
     t(`actions.${action}`);

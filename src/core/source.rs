@@ -123,6 +123,10 @@ impl CallCollector {
         });
     }
 
+    fn push_usage_with_namespaces(&mut self, namespaces: Vec<String>, kind: UsageKind) {
+        self.usages.push(Usage { namespaces, kind });
+    }
+
     fn push_scope(&mut self) {
         self.scopes.push(HashMap::new());
     }
@@ -156,7 +160,29 @@ impl CallCollector {
         let inferred = self.infer_argument(first_arg);
 
         for kind in inferred.into_usage_kinds() {
-            self.push_usage(kind);
+            self.push_resolved_usage(kind);
+        }
+    }
+
+    fn push_resolved_usage(&mut self, kind: UsageKind) {
+        match kind {
+            UsageKind::Static(key) => {
+                if let Some((ns, raw_key)) = split_colon_namespace(&key) {
+                    self.push_usage_with_namespaces(vec![ns], UsageKind::Static(raw_key));
+                } else {
+                    self.push_usage(UsageKind::Static(key));
+                }
+            }
+            UsageKind::Prefix(prefix) => {
+                if let Some((ns, raw_prefix)) = split_colon_namespace(&prefix) {
+                    self.push_usage_with_namespaces(vec![ns], UsageKind::Prefix(raw_prefix));
+                } else {
+                    self.push_usage(UsageKind::Prefix(prefix));
+                }
+            }
+            UsageKind::Dynamic => {
+                self.push_usage(UsageKind::Dynamic);
+            }
         }
     }
 
@@ -535,4 +561,14 @@ fn classify_template_literal(tpl: &TemplateLiteral<'_>) -> UsageKind {
     } else {
         UsageKind::Prefix(prefix.to_string())
     }
+}
+
+fn split_colon_namespace(value: &str) -> Option<(String, String)> {
+    let (namespace, key) = value.split_once(':')?;
+
+    if namespace.is_empty() || key.is_empty() {
+        return None;
+    }
+
+    Some((namespace.to_string(), key.to_string()))
 }
