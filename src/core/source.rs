@@ -322,12 +322,18 @@ impl<'a> Visit<'a> for CallCollector {
     }
 
     fn visit_call_expression(&mut self, expr: &CallExpression<'a>) {
-        if let Expression::Identifier(ident) = &expr.callee {
-            match ident.name.as_str() {
+        match &expr.callee {
+            Expression::Identifier(ident) => match ident.name.as_str() {
                 "useTranslation" => self.handle_use_translation(expr),
                 "t" => self.handle_t_call(expr),
                 _ => {}
+            },
+            Expression::StaticMemberExpression(member) => {
+                if is_i18next_t_member_call(member) {
+                    self.handle_t_call(expr);
+                }
             }
+            _ => {}
         }
 
         walk::walk_call_expression(self, expr);
@@ -632,4 +638,9 @@ fn property_key_is_ns(key: &PropertyKey<'_>) -> bool {
         PropertyKey::StringLiteral(string) => string.value == "ns",
         _ => false,
     }
+}
+
+fn is_i18next_t_member_call(member: &oxc_ast::ast::StaticMemberExpression<'_>) -> bool {
+    member.property.name == "t"
+        && matches!(&member.object, Expression::Identifier(ident) if ident.name == "i18next")
 }
