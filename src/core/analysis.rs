@@ -14,7 +14,6 @@ use crate::core::{
 struct NamespaceAnalysis {
     used_static: HashSet<String>,
     prefixes: HashSet<String>,
-    dynamic_count: usize,
 }
 
 impl NamespaceAnalysis {
@@ -26,9 +25,7 @@ impl NamespaceAnalysis {
             UsageKind::Prefix(prefix) => {
                 self.prefixes.insert(prefix.clone());
             }
-            UsageKind::Dynamic => {
-                self.dynamic_count += 1;
-            }
+            UsageKind::Dynamic => {}
         }
     }
 
@@ -46,10 +43,21 @@ pub struct UnusedKey {
     pub path: PathBuf,
 }
 
+pub struct DynamicUsageSite {
+    /// Source file where unresolved dynamic usage was found.
+    pub path: PathBuf,
+    /// 1-based source line for the unresolved usage.
+    pub line: usize,
+    /// Namespaces in scope (or overridden) for this usage.
+    pub namespaces: Vec<String>,
+}
+
 /// Result of a full unused-key analysis run.
 pub struct AnalysisResult {
     /// All locale keys not matched by observed usage.
     pub unused_keys: Vec<UnusedKey>,
+    /// Usage sites where translation key is dynamic/unresolved.
+    pub dynamic_usages: Vec<DynamicUsageSite>,
 }
 
 /// Computes unused translation keys from locale definitions and source usages.
@@ -69,8 +77,17 @@ pub fn analyze(locales: &[LocaleFile], usages: &[Usage]) -> AnalysisResult {
     // TODO: maybe we should check these clones?
 
     let mut usage_index: HashMap<String, NamespaceAnalysis> = HashMap::new();
+    let mut dynamic_usages = Vec::new();
 
     for usage in usages {
+        if matches!(usage.kind, UsageKind::Dynamic) {
+            dynamic_usages.push(DynamicUsageSite {
+                path: usage.path.clone(),
+                line: usage.line,
+                namespaces: usage.namespaces.clone(),
+            });
+        }
+
         for namespace in &usage.namespaces {
             usage_index
                 .entry(namespace.clone())
@@ -97,5 +114,8 @@ pub fn analyze(locales: &[LocaleFile], usages: &[Usage]) -> AnalysisResult {
         }
     }
 
-    AnalysisResult { unused_keys }
+    AnalysisResult {
+        unused_keys,
+        dynamic_usages,
+    }
 }

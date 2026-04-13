@@ -38,28 +38,51 @@ pub fn run(config: &Config) -> Result<AnalysisResult, I18nError> {
 
 /// Prints a human-readable report of analysis findings.
 ///
-/// Prints a success message when no unused keys are found; otherwise prints one
-/// line per unused key and a final total.
+/// Prints a success message when no unused keys or dynamic usages are found;
+/// otherwise prints unused keys and unresolved dynamic usage sites.
 ///
 /// # Arguments
 ///
 /// * `result` - Analysis output to render to stdout.
 pub fn print_report(result: &AnalysisResult) {
-    if result.unused_keys.is_empty() {
+    if result.unused_keys.is_empty() && result.dynamic_usages.is_empty() {
         println!("No unused translation keys found.");
         return;
     }
 
-    println!("Unused translation keys:\n");
+    if !result.unused_keys.is_empty() {
+        println!("Unused translation keys:\n");
 
-    for item in &result.unused_keys {
-        println!(
-            "[{}] {} -> {}",
-            item.namespace,
-            item.path.display(),
-            item.key
-        );
+        for item in &result.unused_keys {
+            println!(
+                "[{}] {} -> {}",
+                item.namespace,
+                item.path.display(),
+                item.key
+            );
+        }
+
+        println!("\nTotal unused keys: {}", result.unused_keys.len());
+    } else {
+        println!("No unused translation keys found.");
     }
 
-    println!("\nTotal unused keys: {}", result.unused_keys.len());
+    if !result.dynamic_usages.is_empty() {
+        println!("\nDynamic translation usage sites:\n");
+
+        for item in &result.dynamic_usages {
+            if item.namespaces.is_empty() {
+                println!("{}:{} -> (no namespace)", item.path.display(), item.line);
+            } else {
+                println!(
+                    "{}:{} -> [{}]",
+                    item.path.display(),
+                    item.line,
+                    item.namespaces.join(", ")
+                );
+            }
+        }
+
+        println!("\nTotal dynamic usages: {}", result.dynamic_usages.len());
+    }
 }
