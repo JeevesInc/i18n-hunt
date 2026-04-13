@@ -1,0 +1,10 @@
+{
+  "title": "Security settings",
+  "mfa": {
+    "enable": "Enable MFA",
+    "disable": "Disable MFA"
+  },
+  "legacy": {
+    "oldNotice": "Legacy notice"
+  }
+}
