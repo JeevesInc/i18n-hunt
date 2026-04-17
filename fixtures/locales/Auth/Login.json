@@ -1,20 +1,22 @@
 {
-  "title": "Login",
-  "description": "Access your account",
-  "form": {
-    "email": "Email",
-    "password": "Password",
-    "submit": "Sign in"
-  },
-  "errors": {
-    "invalidCredentials": "Invalid email or password",
-    "network": "Network error"
-  },
-  "colonUsed": "Used by explicit namespace syntax",
-  "optionNsOnly": "Used by t(key, { ns }) override",
-  "i18nextOnly": "Used by i18next.t in utility file",
-  "sharedFallback": "Should be used as first namespace",
-  "legacy": {
-    "oldLoginMessage": "Welcome back"
-  }
+    "title": "Login",
+    "description": "Access your account",
+    "form": {
+        "email": "Email",
+        "password": "Password",
+        "submit": "Sign in"
+    },
+    "errors": {
+        "invalidCredentials": "Invalid email or password",
+        "network": "Network error"
+    },
+    "colonUsed": "Used by explicit namespace syntax",
+    "optionNsOnly": "Used by t(key, { ns }) override",
+    "i18nextOnly": "Used by i18next.t in utility file",
+    "sharedFallback": "Should be used as first namespace",
+    "mapCreated": "Used via map[index]",
+    "mapDeleted": "Used via map.member",
+    "legacy": {
+        "oldLoginMessage": "Welcome back"
+    }
 }
