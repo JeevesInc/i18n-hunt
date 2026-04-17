@@ -12,8 +12,9 @@ use std::{
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{
     Argument, BindingPattern, CallExpression, ConditionalExpression, Expression, Function,
-    FunctionBody, ObjectPropertyKind, Program, PropertyKey, Statement, TemplateLiteral,
-    VariableDeclaration, VariableDeclarationKind,
+    FunctionBody, JSXAttributeItem, JSXAttributeName, JSXAttributeValue, JSXElementName,
+    JSXExpression, JSXOpeningElement, ObjectPropertyKind, Program, PropertyKey, Statement,
+    TemplateLiteral, VariableDeclaration, VariableDeclarationKind,
 };
 use oxc_ast_visit::{Visit, walk};
 use oxc_parser::Parser;
@@ -375,6 +376,24 @@ impl<'a> Visit<'a> for CallCollector {
 
         walk::walk_call_expression(self, expr);
     }
+
+    fn visit_jsx_opening_element(&mut self, element: &JSXOpeningElement<'a>) {
+        if !is_trans_element(element) {
+            walk::walk_jsx_opening_element(self, element);
+            return;
+        }
+
+        let Some(i18n_key) = extract_jsx_string_attr(&element.attributes, "i18nKey") else {
+            walk::walk_jsx_opening_element(self, element);
+            return;
+        };
+
+        let ns_override = extract_jsx_string_attr(&element.attributes, "ns");
+        let line = self.line_for_offset(element.span.start);
+        self.push_resolved_usage(UsageKind::Static(i18n_key), ns_override.as_deref(), line);
+
+        walk::walk_jsx_opening_element(self, element);
+    }
 }
 
 /// Recursively collects translation key usages from supported source files.
@@ -692,4 +711,53 @@ fn property_key_is_ns(key: &PropertyKey<'_>) -> bool {
 fn is_i18next_t_member_call(member: &oxc_ast::ast::StaticMemberExpression<'_>) -> bool {
     member.property.name == "t"
         && matches!(&member.object, Expression::Identifier(ident) if ident.name == "i18next")
+}
+
+fn is_trans_element(element: &JSXOpeningElement<'_>) -> bool {
+    match &element.name {
+        JSXElementName::Identifier(ident) => ident.name == "Trans",
+        JSXElementName::IdentifierReference(ident) => ident.name == "Trans",
+        _ => false,
+    }
+}
+
+fn extract_jsx_string_attr(attributes: &[JSXAttributeItem<'_>], name: &str) -> Option<String> {
+    for item in attributes {
+        let JSXAttributeItem::Attribute(attribute) = item else {
+            continue;
+        };
+
+        let JSXAttributeName::Identifier(attr_name) = &attribute.name else {
+            continue;
+        };
+
+        if attr_name.name != name {
+            continue;
+        }
+
+        let value = attribute.value.as_ref()?;
+        return jsx_attribute_value_to_string(value);
+    }
+
+    None
+}
+
+fn jsx_attribute_value_to_string(value: &JSXAttributeValue<'_>) -> Option<String> {
+    match value {
+        JSXAttributeValue::StringLiteral(s) => Some(s.value.to_string()),
+        JSXAttributeValue::ExpressionContainer(container) => {
+            jsx_expression_to_static_string(&container.expression)
+        }
+        _ => None,
+    }
+}
+
+fn jsx_expression_to_static_string(expression: &JSXExpression<'_>) -> Option<String> {
+    match expression {
+        JSXExpression::StringLiteral(s) => Some(s.value.to_string()),
+        JSXExpression::TemplateLiteral(tpl) if tpl.expressions.is_empty() => {
+            tpl.quasis.first().map(|q| q.value.raw.as_str().to_string())
+        }
+        _ => None,
+    }
 }
