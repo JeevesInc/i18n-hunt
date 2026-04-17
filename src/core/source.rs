@@ -109,6 +109,7 @@ struct CallCollector {
     usages: Vec<Usage>,
     function_values: HashMap<String, InferredValue>,
     scopes: Vec<HashMap<String, InferredValue>>,
+    translator_scopes: Vec<HashMap<String, String>>,
     file_path: PathBuf,
     line_starts: Vec<usize>,
 }
@@ -124,6 +125,7 @@ impl CallCollector {
             usages: Vec::new(),
             function_values,
             scopes: vec![HashMap::new()],
+            translator_scopes: vec![HashMap::new()],
             file_path,
             line_starts: collect_line_starts(source_text),
         }
@@ -154,10 +156,12 @@ impl CallCollector {
 
     fn push_scope(&mut self) {
         self.scopes.push(HashMap::new());
+        self.translator_scopes.push(HashMap::new());
     }
 
     fn pop_scope(&mut self) {
         self.scopes.pop();
+        self.translator_scopes.pop();
     }
 
     fn bind_local(&mut self, name: String, value: InferredValue) {
@@ -173,15 +177,36 @@ impl CallCollector {
             .find_map(|scope| scope.get(name).cloned())
     }
 
+    fn bind_translator_namespace(&mut self, name: String, namespace: String) {
+        if let Some(scope) = self.translator_scopes.last_mut() {
+            scope.insert(name, namespace);
+        }
+    }
+
+    fn resolve_translator_namespace(&self, name: &str) -> Option<String> {
+        self.translator_scopes
+            .iter()
+            .rev()
+            .find_map(|scope| scope.get(name).cloned())
+    }
+
     fn handle_use_translation<'a>(&mut self, expr: &CallExpression<'a>) {
         self.namespaces = extract_namespaces(expr);
     }
 
     fn handle_t_call<'a>(&mut self, expr: &CallExpression<'a>) {
+        self.handle_t_call_with_base_ns(expr, None);
+    }
+
+    fn handle_t_call_with_base_ns<'a>(&mut self, expr: &CallExpression<'a>, base_ns: Option<&str>) {
         let Some(first_arg) = expr.arguments.first() else {
             return;
         };
-        let ns_override = expr.arguments.get(1).and_then(extract_ns_override);
+        let ns_override = expr
+            .arguments
+            .get(1)
+            .and_then(extract_ns_override)
+            .or_else(|| base_ns.map(ToString::to_string));
         let line = self.line_for_offset(expr.span.start);
 
         let inferred = self.infer_argument(first_arg);
@@ -258,6 +283,24 @@ impl CallCollector {
 
             let inferred = self.infer_expression(init);
             self.bind_local(binding.name.to_string(), inferred);
+        }
+    }
+
+    fn track_server_translator_bindings<'a>(&mut self, decl: &VariableDeclaration<'a>) {
+        for declarator in &decl.declarations {
+            let Some(init) = &declarator.init else {
+                continue;
+            };
+
+            let Some(namespace) = extract_server_translator_namespace_from_expression(init) else {
+                continue;
+            };
+
+            let BindingPattern::BindingIdentifier(binding) = &declarator.id else {
+                continue;
+            };
+
+            self.bind_translator_namespace(binding.name.to_string(), namespace);
         }
     }
 
@@ -355,6 +398,7 @@ impl<'a> Visit<'a> for CallCollector {
     }
 
     fn visit_variable_declaration(&mut self, decl: &VariableDeclaration<'a>) {
+        self.track_server_translator_bindings(decl);
         self.track_const_bindings(decl);
         walk::walk_variable_declaration(self, decl);
     }
@@ -363,8 +407,16 @@ impl<'a> Visit<'a> for CallCollector {
         match &expr.callee {
             Expression::Identifier(ident) => match ident.name.as_str() {
                 "useTranslation" => self.handle_use_translation(expr),
-                "t" => self.handle_t_call(expr),
-                _ => {}
+                "t" => {
+                    let ns = self.resolve_translator_namespace("t");
+                    self.handle_t_call_with_base_ns(expr, ns.as_deref());
+                }
+                _ => {
+                    if let Some(namespace) = self.resolve_translator_namespace(ident.name.as_str())
+                    {
+                        self.handle_t_call_with_base_ns(expr, Some(namespace.as_str()));
+                    }
+                }
             },
             Expression::StaticMemberExpression(member) => {
                 if is_i18next_t_member_call(member) {
@@ -711,6 +763,38 @@ fn property_key_is_ns(key: &PropertyKey<'_>) -> bool {
 fn is_i18next_t_member_call(member: &oxc_ast::ast::StaticMemberExpression<'_>) -> bool {
     member.property.name == "t"
         && matches!(&member.object, Expression::Identifier(ident) if ident.name == "i18next")
+}
+
+fn extract_server_translator_namespace_from_expression(
+    expression: &Expression<'_>,
+) -> Option<String> {
+    match expression {
+        Expression::CallExpression(call) => extract_server_translator_namespace_from_call(call),
+        Expression::AwaitExpression(await_expr) => {
+            extract_server_translator_namespace_from_expression(&await_expr.argument)
+        }
+        _ => None,
+    }
+}
+
+fn extract_server_translator_namespace_from_call(call: &CallExpression<'_>) -> Option<String> {
+    let Expression::Identifier(callee) = &call.callee else {
+        return None;
+    };
+
+    if callee.name != "getServerTranslate" {
+        return None;
+    }
+
+    let first_arg = call.arguments.first()?;
+
+    match first_arg {
+        Argument::StringLiteral(s) => Some(s.value.to_string()),
+        Argument::TemplateLiteral(tpl) if tpl.expressions.is_empty() => {
+            tpl.quasis.first().map(|q| q.value.raw.as_str().to_string())
+        }
+        _ => None,
+    }
 }
 
 fn is_trans_element(element: &JSXOpeningElement<'_>) -> bool {
