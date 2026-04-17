@@ -110,6 +110,7 @@ struct CallCollector {
     function_values: HashMap<String, InferredValue>,
     scopes: Vec<HashMap<String, InferredValue>>,
     translator_scopes: Vec<HashMap<String, String>>,
+    map_scopes: Vec<HashMap<String, HashMap<String, InferredValue>>>,
     file_path: PathBuf,
     line_starts: Vec<usize>,
 }
@@ -126,6 +127,7 @@ impl CallCollector {
             function_values,
             scopes: vec![HashMap::new()],
             translator_scopes: vec![HashMap::new()],
+            map_scopes: vec![HashMap::new()],
             file_path,
             line_starts: collect_line_starts(source_text),
         }
@@ -157,11 +159,13 @@ impl CallCollector {
     fn push_scope(&mut self) {
         self.scopes.push(HashMap::new());
         self.translator_scopes.push(HashMap::new());
+        self.map_scopes.push(HashMap::new());
     }
 
     fn pop_scope(&mut self) {
         self.scopes.pop();
         self.translator_scopes.pop();
+        self.map_scopes.pop();
     }
 
     fn bind_local(&mut self, name: String, value: InferredValue) {
@@ -188,6 +192,19 @@ impl CallCollector {
             .iter()
             .rev()
             .find_map(|scope| scope.get(name).cloned())
+    }
+
+    fn bind_map(&mut self, name: String, map: HashMap<String, InferredValue>) {
+        if let Some(scope) = self.map_scopes.last_mut() {
+            scope.insert(name, map);
+        }
+    }
+
+    fn resolve_map(&self, name: &str) -> Option<&HashMap<String, InferredValue>> {
+        self.map_scopes
+            .iter()
+            .rev()
+            .find_map(|scope| scope.get(name))
     }
 
     fn handle_use_translation<'a>(&mut self, expr: &CallExpression<'a>) {
@@ -304,6 +321,49 @@ impl CallCollector {
         }
     }
 
+    fn track_const_map_bindings<'a>(&mut self, decl: &VariableDeclaration<'a>) {
+        if decl.kind != VariableDeclarationKind::Const {
+            return;
+        }
+
+        for declarator in &decl.declarations {
+            let Some(init) = &declarator.init else {
+                continue;
+            };
+
+            let Expression::ObjectExpression(obj) = init else {
+                continue;
+            };
+
+            let BindingPattern::BindingIdentifier(binding) = &declarator.id else {
+                continue;
+            };
+
+            let mut map = HashMap::new();
+
+            for property in &obj.properties {
+                let ObjectPropertyKind::ObjectProperty(prop) = property else {
+                    continue;
+                };
+
+                if prop.computed || prop.method {
+                    continue;
+                }
+
+                let Some(key) = object_property_key_to_string(&prop.key) else {
+                    continue;
+                };
+
+                let value = self.infer_expression(&prop.value);
+                map.insert(key, value);
+            }
+
+            if !map.is_empty() {
+                self.bind_map(binding.name.to_string(), map);
+            }
+        }
+    }
+
     fn infer_argument<'a>(&self, arg: &Argument<'a>) -> InferredValue {
         match arg {
             Argument::StringLiteral(s) => {
@@ -315,6 +375,8 @@ impl CallCollector {
             Argument::Identifier(ident) => self
                 .resolve_local(ident.name.as_str())
                 .unwrap_or_else(InferredValue::dynamic),
+            Argument::ComputedMemberExpression(member) => self.infer_computed_member(member),
+            Argument::StaticMemberExpression(member) => self.infer_static_member(member),
             Argument::CallExpression(call) => self.infer_call(call),
             Argument::ConditionalExpression(cond) => self.infer_conditional(cond),
             _ => InferredValue::dynamic(),
@@ -332,10 +394,59 @@ impl CallCollector {
             Expression::Identifier(ident) => self
                 .resolve_local(ident.name.as_str())
                 .unwrap_or_else(InferredValue::dynamic),
+            Expression::ComputedMemberExpression(member) => self.infer_computed_member(member),
+            Expression::StaticMemberExpression(member) => self.infer_static_member(member),
             Expression::CallExpression(call) => self.infer_call(call),
             Expression::ConditionalExpression(cond) => self.infer_conditional(cond),
             _ => InferredValue::dynamic(),
         }
+    }
+
+    fn infer_computed_member<'a>(
+        &self,
+        member: &oxc_ast::ast::ComputedMemberExpression<'a>,
+    ) -> InferredValue {
+        let Expression::Identifier(object_ident) = &member.object else {
+            return InferredValue::dynamic();
+        };
+
+        let Some(map) = self.resolve_map(object_ident.name.as_str()) else {
+            return InferredValue::dynamic();
+        };
+
+        let property = self.infer_expression(&member.expression);
+        let mut out = InferredValue::default();
+
+        for key in &property.statics {
+            if let Some(mapped_value) = map.get(key) {
+                out.merge(mapped_value.clone());
+            } else {
+                out.dynamic = true;
+            }
+        }
+
+        if property.dynamic || property.statics.is_empty() {
+            out.dynamic = true;
+        }
+
+        out
+    }
+
+    fn infer_static_member<'a>(
+        &self,
+        member: &oxc_ast::ast::StaticMemberExpression<'a>,
+    ) -> InferredValue {
+        let Expression::Identifier(object_ident) = &member.object else {
+            return InferredValue::dynamic();
+        };
+
+        let Some(map) = self.resolve_map(object_ident.name.as_str()) else {
+            return InferredValue::dynamic();
+        };
+
+        map.get(member.property.name.as_str())
+            .cloned()
+            .unwrap_or_else(InferredValue::dynamic)
     }
 
     fn infer_conditional<'a>(&self, cond: &ConditionalExpression<'a>) -> InferredValue {
@@ -399,6 +510,7 @@ impl<'a> Visit<'a> for CallCollector {
 
     fn visit_variable_declaration(&mut self, decl: &VariableDeclaration<'a>) {
         self.track_server_translator_bindings(decl);
+        self.track_const_map_bindings(decl);
         self.track_const_bindings(decl);
         walk::walk_variable_declaration(self, decl);
     }
@@ -757,6 +869,17 @@ fn property_key_is_ns(key: &PropertyKey<'_>) -> bool {
         PropertyKey::StaticIdentifier(ident) => ident.name == "ns",
         PropertyKey::StringLiteral(string) => string.value == "ns",
         _ => false,
+    }
+}
+
+fn object_property_key_to_string(key: &PropertyKey<'_>) -> Option<String> {
+    match key {
+        PropertyKey::StaticIdentifier(ident) => Some(ident.name.to_string()),
+        PropertyKey::StringLiteral(string) => Some(string.value.to_string()),
+        PropertyKey::TemplateLiteral(tpl) if tpl.expressions.is_empty() => {
+            tpl.quasis.first().map(|q| q.value.raw.as_str().to_string())
+        }
+        _ => None,
     }
 }
 
