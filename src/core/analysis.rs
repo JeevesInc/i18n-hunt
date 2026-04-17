@@ -78,6 +78,10 @@ pub fn analyze(locales: &[LocaleFile], usages: &[Usage]) -> AnalysisResult {
 
     let mut usage_index: HashMap<String, NamespaceAnalysis> = HashMap::new();
     let mut dynamic_usages = Vec::new();
+    let locale_key_index: HashMap<String, &HashSet<String>> = locales
+        .iter()
+        .map(|locale| (locale.namespace.clone(), &locale.keys))
+        .collect();
 
     for usage in usages {
         if matches!(usage.kind, UsageKind::Dynamic) {
@@ -88,9 +92,9 @@ pub fn analyze(locales: &[LocaleFile], usages: &[Usage]) -> AnalysisResult {
             });
         }
 
-        for namespace in &usage.namespaces {
+        if let Some(namespace) = resolve_usage_namespace(usage, &locale_key_index) {
             usage_index
-                .entry(namespace.clone())
+                .entry(namespace)
                 .or_default()
                 .record_usage(&usage.kind);
         }
@@ -117,5 +121,36 @@ pub fn analyze(locales: &[LocaleFile], usages: &[Usage]) -> AnalysisResult {
     AnalysisResult {
         unused_keys,
         dynamic_usages,
+    }
+}
+
+fn resolve_usage_namespace(
+    usage: &Usage,
+    locale_key_index: &HashMap<String, &HashSet<String>>,
+) -> Option<String> {
+    let fallback = usage.namespaces.first().cloned();
+
+    match &usage.kind {
+        UsageKind::Static(key) => usage
+            .namespaces
+            .iter()
+            .find(|namespace| {
+                locale_key_index
+                    .get(*namespace)
+                    .is_some_and(|keys| keys.contains(key))
+            })
+            .cloned()
+            .or(fallback),
+        UsageKind::Prefix(prefix) => usage
+            .namespaces
+            .iter()
+            .find(|namespace| {
+                locale_key_index
+                    .get(*namespace)
+                    .is_some_and(|keys| keys.iter().any(|key| key.starts_with(prefix)))
+            })
+            .cloned()
+            .or(fallback),
+        UsageKind::Dynamic => fallback,
     }
 }
