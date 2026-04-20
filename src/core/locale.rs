@@ -9,8 +9,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use ignore::WalkBuilder;
 use serde_json::Value;
-use walkdir::WalkDir;
 
 use crate::core::error::I18nError;
 
@@ -62,8 +62,16 @@ impl LocaleFile {
 pub fn load_locales(dir: &PathBuf) -> Result<Vec<LocaleFile>, I18nError> {
     let mut locales: Vec<LocaleFile> = vec![];
 
-    for entry in WalkDir::new(&dir) {
+    for entry in WalkBuilder::new(dir).hidden(false).build() {
         let entry = entry?;
+
+        if !entry
+            .file_type()
+            .is_some_and(|file_type| file_type.is_file())
+        {
+            continue;
+        }
+
         let path = entry.path();
 
         if is_json_file(path) {

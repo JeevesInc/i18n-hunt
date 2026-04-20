@@ -9,6 +9,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use ignore::WalkBuilder;
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{
     Argument, BindingPattern, CallExpression, ConditionalExpression, Expression, Function,
@@ -19,7 +20,6 @@ use oxc_ast::ast::{
 use oxc_ast_visit::{Visit, walk};
 use oxc_parser::Parser;
 use oxc_span::SourceType;
-use walkdir::WalkDir;
 
 use crate::core::error::I18nError;
 
@@ -578,10 +578,13 @@ impl<'a> Visit<'a> for CallCollector {
 pub fn collect_usages(source_dir: &PathBuf) -> Result<Vec<Usage>, I18nError> {
     let mut all_usages: Vec<Usage> = vec![];
 
-    for entry in WalkDir::new(source_dir) {
+    for entry in WalkBuilder::new(source_dir).hidden(false).build() {
         let entry = entry?;
 
-        if !entry.file_type().is_file() {
+        if !entry
+            .file_type()
+            .is_some_and(|file_type| file_type.is_file())
+        {
             continue;
         }
 
