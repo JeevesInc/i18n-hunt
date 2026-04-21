@@ -26,7 +26,7 @@ fn main() {
 /// Returns [`I18nError`] when locale loading or source analysis fails.
 fn run() -> Result<(), I18nError> {
     let args = cli::parse();
-    let config = args.into_config();
+    let config = args.into_config()?;
 
     let result = core::run(&config)?;
 
