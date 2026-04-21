@@ -9,6 +9,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use globset::{Glob, GlobSet, GlobSetBuilder};
 use ignore::WalkBuilder;
 use serde_json::Value;
 
@@ -59,8 +60,12 @@ impl LocaleFile {
 ///
 /// Returns [`I18nError`] if traversal, file reading, parsing, or namespace
 /// derivation fails.
-pub fn load_locales(dir: &PathBuf) -> Result<Vec<LocaleFile>, I18nError> {
+pub fn load_locales(
+    dir: &PathBuf,
+    exclude_patterns: &[String],
+) -> Result<Vec<LocaleFile>, I18nError> {
     let mut locales: Vec<LocaleFile> = vec![];
+    let excludes = build_globset(exclude_patterns)?;
 
     for entry in WalkBuilder::new(dir).hidden(false).build() {
         let entry = entry?;
@@ -74,6 +79,10 @@ pub fn load_locales(dir: &PathBuf) -> Result<Vec<LocaleFile>, I18nError> {
 
         let path = entry.path();
 
+        if is_excluded(path, dir, &excludes) {
+            continue;
+        }
+
         if is_json_file(path) {
             let locale_file = LocaleFile::from_file(path, dir)?;
 
@@ -82,6 +91,39 @@ pub fn load_locales(dir: &PathBuf) -> Result<Vec<LocaleFile>, I18nError> {
     }
 
     Ok(locales)
+}
+
+fn build_globset(patterns: &[String]) -> Result<GlobSet, I18nError> {
+    let mut builder = GlobSetBuilder::new();
+    for pattern in patterns {
+        let glob = Glob::new(pattern).map_err(|err| {
+            I18nError::Config(format!(
+                "invalid locales_exclude pattern '{}': {}",
+                pattern, err
+            ))
+        })?;
+        builder.add(glob);
+    }
+
+    builder.build().map_err(|err| {
+        I18nError::Config(format!(
+            "failed to compile locales_exclude patterns: {}",
+            err
+        ))
+    })
+}
+
+fn is_excluded(path: &Path, root: &Path, excludes: &GlobSet) -> bool {
+    let Ok(relative) = path.strip_prefix(root) else {
+        return false;
+    };
+
+    if excludes.is_match(relative) {
+        return true;
+    }
+
+    let normalized = relative.to_string_lossy().replace('\\', "/");
+    excludes.is_match(&normalized)
 }
 
 /// Returns whether a path points to a `.json` file.

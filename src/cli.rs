@@ -44,7 +44,12 @@ impl Args {
             I18nError::Config("missing src path (use --src or i18n-hunt.toml)".to_string())
         })?;
 
-        Ok(Config { locales, src })
+        Ok(Config {
+            locales,
+            src,
+            src_exclude: file_config.src_exclude.unwrap_or_default(),
+            locales_exclude: file_config.locales_exclude.unwrap_or_default(),
+        })
     }
 }
 
@@ -52,6 +57,8 @@ impl Args {
 struct FileConfig {
     locales: Option<PathBuf>,
     src: Option<PathBuf>,
+    src_exclude: Option<Vec<String>>,
+    locales_exclude: Option<Vec<String>>,
 }
 
 fn load_file_config(config_arg: Option<&Path>) -> Result<FileConfig, I18nError> {

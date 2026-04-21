@@ -9,6 +9,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use globset::{Glob, GlobSet, GlobSetBuilder};
 use ignore::WalkBuilder;
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{
@@ -575,8 +576,12 @@ impl<'a> Visit<'a> for CallCollector {
 /// # Errors
 ///
 /// Returns [`I18nError`] when traversal, file reading, or source parsing fails.
-pub fn collect_usages(source_dir: &PathBuf) -> Result<Vec<Usage>, I18nError> {
+pub fn collect_usages(
+    source_dir: &PathBuf,
+    exclude_patterns: &[String],
+) -> Result<Vec<Usage>, I18nError> {
     let mut all_usages: Vec<Usage> = vec![];
+    let excludes = build_globset(exclude_patterns)?;
 
     for entry in WalkBuilder::new(source_dir).hidden(false).build() {
         let entry = entry?;
@@ -593,12 +598,45 @@ pub fn collect_usages(source_dir: &PathBuf) -> Result<Vec<Usage>, I18nError> {
         if !is_supported_source_file(path) {
             continue;
         }
+        if is_excluded(path, source_dir, &excludes) {
+            continue;
+        }
 
         let file_usages = parse_source_file(path)?;
         all_usages.extend(file_usages);
     }
 
     Ok(all_usages)
+}
+
+fn build_globset(patterns: &[String]) -> Result<GlobSet, I18nError> {
+    let mut builder = GlobSetBuilder::new();
+    for pattern in patterns {
+        let glob = Glob::new(pattern).map_err(|err| {
+            I18nError::Config(format!(
+                "invalid src_exclude pattern '{}': {}",
+                pattern, err
+            ))
+        })?;
+        builder.add(glob);
+    }
+
+    builder.build().map_err(|err| {
+        I18nError::Config(format!("failed to compile src_exclude patterns: {}", err))
+    })
+}
+
+fn is_excluded(path: &Path, root: &Path, excludes: &GlobSet) -> bool {
+    let Ok(relative) = path.strip_prefix(root) else {
+        return false;
+    };
+
+    if excludes.is_match(relative) {
+        return true;
+    }
+
+    let normalized = relative.to_string_lossy().replace('\\', "/");
+    excludes.is_match(&normalized)
 }
 
 /// Returns whether `path` is a supported source file extension.
