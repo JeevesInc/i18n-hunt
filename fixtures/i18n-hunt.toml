@@ -1,2 +1,3 @@
 locales = "./locales"
 src = "./src"
+src_exclude = ["test/ignored.ts"]
