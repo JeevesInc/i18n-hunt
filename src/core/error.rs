@@ -16,6 +16,8 @@ pub enum I18nError {
     SourceParse { path: PathBuf, message: String },
     /// Recursive directory traversal failure.
     WalkDir(String),
+    /// Invalid or incomplete CLI/config composition.
+    Config(String),
 }
 
 impl fmt::Display for I18nError {
@@ -35,6 +37,7 @@ impl fmt::Display for I18nError {
                 )
             }
             I18nError::WalkDir(message) => write!(f, "walkdir error: {message}"),
+            I18nError::Config(message) => write!(f, "config error: {message}"),
         }
     }
 }
