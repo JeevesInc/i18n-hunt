@@ -252,6 +252,7 @@ name = "i18n-hunt"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "globset",
  "ignore",
  "oxc_allocator",
  "oxc_ast",
