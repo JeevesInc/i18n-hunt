@@ -15,6 +15,10 @@ pub struct Config {
     pub locales: PathBuf,
     /// Root directory that contains source files to analyze.
     pub src: PathBuf,
+    /// Glob patterns (relative to `src`) to skip source files/directories.
+    pub src_exclude: Vec<String>,
+    /// Glob patterns (relative to `locales`) to skip locale files/directories.
+    pub locales_exclude: Vec<String>,
 }
 
 /// Runs locale loading, source scanning, and unused-key analysis.
@@ -31,8 +35,8 @@ pub struct Config {
 ///
 /// Returns [`I18nError`] if any I/O, parsing, or traversal step fails.
 pub fn run(config: &Config) -> Result<AnalysisResult, I18nError> {
-    let locales = locale::load_locales(&config.locales)?;
-    let usages = source::collect_usages(&config.src)?;
+    let locales = locale::load_locales(&config.locales, &config.locales_exclude)?;
+    let usages = source::collect_usages(&config.src, &config.src_exclude)?;
     Ok(analysis::analyze(&locales, &usages))
 }
 
