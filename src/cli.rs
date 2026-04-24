@@ -21,7 +21,7 @@ pub struct Args {
     #[arg(long)]
     src: Option<PathBuf>,
 
-    /// Optional config file path (JSON). If omitted, `i18n-hunt.config` is
+    /// Optional config file path (TOML). If omitted, `i18n-hunt.toml` is
     /// loaded automatically when present.
     #[arg(long)]
     config: Option<PathBuf>,
@@ -37,13 +37,11 @@ impl Args {
         let file_config = load_file_config(self.config.as_deref())?;
 
         let locales = self.locales.or(file_config.locales).ok_or_else(|| {
-            I18nError::Config(
-                "missing locales path (use --locales or i18n-hunt.config)".to_string(),
-            )
+            I18nError::Config("missing locales path (use --locales or i18n-hunt.toml)".to_string())
         })?;
 
         let src = self.src.or(file_config.src).ok_or_else(|| {
-            I18nError::Config("missing src path (use --src or i18n-hunt.config)".to_string())
+            I18nError::Config("missing src path (use --src or i18n-hunt.toml)".to_string())
         })?;
 
         Ok(Config { locales, src })
@@ -58,7 +56,7 @@ struct FileConfig {
 
 fn load_file_config(config_arg: Option<&Path>) -> Result<FileConfig, I18nError> {
     let explicit_path = config_arg.map(Path::to_path_buf);
-    let default_path = PathBuf::from("i18n-hunt.config");
+    let default_path = PathBuf::from("i18n-hunt.toml");
 
     let path = match explicit_path {
         Some(path) => path,
@@ -67,7 +65,7 @@ fn load_file_config(config_arg: Option<&Path>) -> Result<FileConfig, I18nError> 
     };
 
     let raw = read_to_string(&path)?;
-    let parsed = serde_json::from_str::<FileConfig>(&raw).map_err(|err| {
+    let parsed = toml::from_str::<FileConfig>(&raw).map_err(|err| {
         I18nError::Config(format!("failed to parse '{}': {}", path.display(), err))
     })?;
 
