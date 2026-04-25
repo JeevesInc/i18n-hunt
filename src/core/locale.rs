@@ -65,9 +65,10 @@ pub fn load_locales(
     exclude_patterns: &[String],
 ) -> Result<Vec<LocaleFile>, I18nError> {
     let mut locales: Vec<LocaleFile> = vec![];
-    let excludes = build_globset(exclude_patterns)?;
+    let excludes = build_exclude_globset(exclude_patterns)?;
+    let (walk_root, namespace_base, only_file) = resolve_locale_roots(dir);
 
-    for entry in WalkBuilder::new(dir).hidden(false).build() {
+    for entry in WalkBuilder::new(&walk_root).hidden(false).build() {
         let entry = entry?;
 
         if !entry
@@ -78,13 +79,18 @@ pub fn load_locales(
         }
 
         let path = entry.path();
+        if let Some(target_file) = &only_file {
+            if path != target_file {
+                continue;
+            }
+        }
 
-        if is_excluded(path, dir, &excludes) {
+        if is_excluded(path, &walk_root, &excludes) {
             continue;
         }
 
         if is_json_file(path) {
-            let locale_file = LocaleFile::from_file(path, dir)?;
+            let locale_file = LocaleFile::from_file(path, &namespace_base)?;
 
             locales.push(locale_file);
         }
@@ -93,7 +99,7 @@ pub fn load_locales(
     Ok(locales)
 }
 
-fn build_globset(patterns: &[String]) -> Result<GlobSet, I18nError> {
+fn build_exclude_globset(patterns: &[String]) -> Result<GlobSet, I18nError> {
     let mut builder = GlobSetBuilder::new();
     for pattern in patterns {
         let glob = Glob::new(pattern).map_err(|err| {
@@ -118,12 +124,41 @@ fn is_excluded(path: &Path, root: &Path, excludes: &GlobSet) -> bool {
         return false;
     };
 
-    if excludes.is_match(relative) {
+    matches_relative(relative, excludes)
+}
+
+fn matches_relative(relative: &Path, set: &GlobSet) -> bool {
+    if set.is_match(relative) {
         return true;
     }
 
     let normalized = relative.to_string_lossy().replace('\\', "/");
-    excludes.is_match(&normalized)
+    set.is_match(&normalized)
+}
+
+fn resolve_locale_roots(target: &Path) -> (PathBuf, PathBuf, Option<PathBuf>) {
+    let walk_root = if target.is_file() {
+        target
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| PathBuf::from("."))
+    } else {
+        target.to_path_buf()
+    };
+
+    let namespace_base = find_locales_base(target).unwrap_or_else(|| walk_root.clone());
+    let only_file = target.is_file().then(|| target.to_path_buf());
+
+    (walk_root, namespace_base, only_file)
+}
+
+fn find_locales_base(path: &Path) -> Option<PathBuf> {
+    for ancestor in path.ancestors() {
+        if ancestor.file_name().is_some_and(|name| name == "locales") {
+            return Some(ancestor.to_path_buf());
+        }
+    }
+    None
 }
 
 /// Returns whether a path points to a `.json` file.

@@ -581,9 +581,10 @@ pub fn collect_usages(
     exclude_patterns: &[String],
 ) -> Result<Vec<Usage>, I18nError> {
     let mut all_usages: Vec<Usage> = vec![];
-    let excludes = build_globset(exclude_patterns)?;
+    let excludes = build_exclude_globset(exclude_patterns)?;
+    let (walk_root, only_file) = resolve_walk_target(source_dir);
 
-    for entry in WalkBuilder::new(source_dir).hidden(false).build() {
+    for entry in WalkBuilder::new(&walk_root).hidden(false).build() {
         let entry = entry?;
 
         if !entry
@@ -594,11 +595,16 @@ pub fn collect_usages(
         }
 
         let path = entry.path();
+        if let Some(target_file) = &only_file {
+            if path != target_file {
+                continue;
+            }
+        }
 
         if !is_supported_source_file(path) {
             continue;
         }
-        if is_excluded(path, source_dir, &excludes) {
+        if is_excluded(path, &walk_root, &excludes) {
             continue;
         }
 
@@ -609,7 +615,7 @@ pub fn collect_usages(
     Ok(all_usages)
 }
 
-fn build_globset(patterns: &[String]) -> Result<GlobSet, I18nError> {
+fn build_exclude_globset(patterns: &[String]) -> Result<GlobSet, I18nError> {
     let mut builder = GlobSetBuilder::new();
     for pattern in patterns {
         let glob = Glob::new(pattern).map_err(|err| {
@@ -631,12 +637,28 @@ fn is_excluded(path: &Path, root: &Path, excludes: &GlobSet) -> bool {
         return false;
     };
 
-    if excludes.is_match(relative) {
+    matches_relative(relative, excludes)
+}
+
+fn matches_relative(relative: &Path, set: &GlobSet) -> bool {
+    if set.is_match(relative) {
         return true;
     }
 
     let normalized = relative.to_string_lossy().replace('\\', "/");
-    excludes.is_match(&normalized)
+    set.is_match(&normalized)
+}
+
+fn resolve_walk_target(target: &Path) -> (PathBuf, Option<PathBuf>) {
+    if target.is_file() {
+        let root = target
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| PathBuf::from("."));
+        (root, Some(target.to_path_buf()))
+    } else {
+        (target.to_path_buf(), None)
+    }
 }
 
 /// Returns whether `path` is a supported source file extension.

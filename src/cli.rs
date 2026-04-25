@@ -13,11 +13,11 @@ use crate::core::{Config, error::I18nError};
 #[command(name = "i18n-hunt")]
 #[command(about = "Detect unused i18n keys using AST analysis")]
 pub struct Args {
-    /// Directory containing locale JSON files.
+    /// Locale directory (or a specific locale JSON file).
     #[arg(long)]
     locales: Option<PathBuf>,
 
-    /// Source directory to scan for translation key usages.
+    /// Source directory or a specific source file to scan.
     #[arg(long)]
     src: Option<PathBuf>,
 
@@ -39,10 +39,22 @@ impl Args {
         let locales = self.locales.or(file_config.locales).ok_or_else(|| {
             I18nError::Config("missing locales path (use --locales or i18n-hunt.toml)".to_string())
         })?;
+        if !(locales.is_dir() || locales.is_file()) {
+            return Err(I18nError::Config(format!(
+                "locales path must be a directory or file: '{}'",
+                locales.display()
+            )));
+        }
 
         let src = self.src.or(file_config.src).ok_or_else(|| {
             I18nError::Config("missing src path (use --src or i18n-hunt.toml)".to_string())
         })?;
+        if !(src.is_dir() || src.is_file()) {
+            return Err(I18nError::Config(format!(
+                "src path must be a directory or file: '{}'",
+                src.display()
+            )));
+        }
 
         Ok(Config {
             locales,
