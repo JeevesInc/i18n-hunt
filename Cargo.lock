@@ -254,6 +254,7 @@ dependencies = [
  "clap",
  "globset",
  "ignore",
+ "owo-colors",
  "oxc_allocator",
  "oxc_ast",
  "oxc_ast_visit",

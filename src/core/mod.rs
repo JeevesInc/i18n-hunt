@@ -2,6 +2,8 @@
 
 use std::path::PathBuf;
 
+use owo_colors::OwoColorize;
+
 use crate::core::{analysis::AnalysisResult, error::I18nError};
 
 pub mod analysis;
@@ -49,44 +51,33 @@ pub fn run(config: &Config) -> Result<AnalysisResult, I18nError> {
 ///
 /// * `result` - Analysis output to render to stdout.
 pub fn print_report(result: &AnalysisResult) {
-    if result.unused_keys.is_empty() && result.dynamic_usages.is_empty() {
-        println!("No unused translation keys found.");
-        return;
-    }
+    let used_count = result.total_keys.saturating_sub(result.unused_keys.len());
+
+    println!("{}", "Summary".bold().cyan());
+    println!("  Used keys:      {:>5}", used_count);
+    println!("  Unused keys:    {:>5}", result.unused_keys.len());
+    println!("  Dynamic usages: {:>5}", result.dynamic_usages.len());
 
     if !result.unused_keys.is_empty() {
-        println!("Unused translation keys:\n");
-
+        println!("\n{}", "Unused keys".bold().yellow());
         for item in &result.unused_keys {
-            println!(
-                "[{}] {} -> {}",
-                item.namespace,
-                item.path.display(),
-                item.key
-            );
+            println!("  {} -> {}", item.key, item.path.display());
         }
-
-        println!("\nTotal unused keys: {}", result.unused_keys.len());
-    } else {
-        println!("No unused translation keys found.");
     }
 
     if !result.dynamic_usages.is_empty() {
-        println!("\nDynamic translation usage sites:\n");
-
+        println!("\n{}", "Dynamic usages".bold().magenta());
         for item in &result.dynamic_usages {
             if item.namespaces.is_empty() {
-                println!("{}:{} -> (no namespace)", item.path.display(), item.line);
+                println!("  {}:{} -> (no namespace)", item.path.display(), item.line);
             } else {
                 println!(
-                    "{}:{} -> [{}]",
+                    "  {}:{} -> [{}]",
                     item.path.display(),
                     item.line,
                     item.namespaces.join(", ")
                 );
             }
         }
-
-        println!("\nTotal dynamic usages: {}", result.dynamic_usages.len());
     }
 }

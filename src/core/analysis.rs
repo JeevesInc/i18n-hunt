@@ -35,12 +35,10 @@ impl NamespaceAnalysis {
 }
 
 pub struct UnusedKey {
-    /// Namespace in which the unused key is defined.
-    pub namespace: String,
-    /// Flattened translation key that appears unused.
-    pub key: String,
     /// Locale file path where the key is defined.
     pub path: PathBuf,
+    /// Flattened translation key that appears unused.
+    pub key: String,
 }
 
 pub struct DynamicUsageSite {
@@ -54,6 +52,8 @@ pub struct DynamicUsageSite {
 
 /// Result of a full unused-key analysis run.
 pub struct AnalysisResult {
+    /// Total number of locale keys loaded for this run.
+    pub total_keys: usize,
     /// All locale keys not matched by observed usage.
     pub unused_keys: Vec<UnusedKey>,
     /// Usage sites where translation key is dynamic/unresolved.
@@ -101,24 +101,26 @@ pub fn analyze(locales: &[LocaleFile], usages: &[Usage]) -> AnalysisResult {
     }
 
     let mut unused_keys = Vec::new();
+    let mut total_keys = 0usize;
 
     for locale in locales {
         let analysis = usage_index.get(&locale.namespace);
+        total_keys += locale.keys.len();
 
         for key in &locale.keys {
             let is_used = analysis.map(|a| a.protects_key(key)).unwrap_or(false);
 
             if !is_used {
                 unused_keys.push(UnusedKey {
-                    namespace: locale.namespace.clone(),
-                    key: key.clone(),
                     path: locale.path.clone(),
+                    key: key.clone(),
                 });
             }
         }
     }
 
     AnalysisResult {
+        total_keys,
         unused_keys,
         dynamic_usages,
     }
