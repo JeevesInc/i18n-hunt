@@ -1,6 +1,6 @@
 {
   "transOnly": "Used by <Trans />",
-  "sharedFallback": "Should remain unused in Common (resolved to first namespace)",
+  "sharedFallback": "Used in fallback namespace list (now counted in Common too)",
   "onlyInCommon": "Used by fallback namespace",
   "legacy": {
     "oldTransLabel": "Old label"
