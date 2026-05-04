@@ -92,7 +92,7 @@ pub fn analyze(locales: &[LocaleFile], usages: &[Usage]) -> AnalysisResult {
             });
         }
 
-        if let Some(namespace) = resolve_usage_namespace(usage, &locale_key_index) {
+        for namespace in resolve_usage_namespaces(usage, &locale_key_index) {
             usage_index
                 .entry(namespace)
                 .or_default()
@@ -124,33 +124,44 @@ pub fn analyze(locales: &[LocaleFile], usages: &[Usage]) -> AnalysisResult {
     }
 }
 
-fn resolve_usage_namespace(
+fn resolve_usage_namespaces(
     usage: &Usage,
     locale_key_index: &HashMap<String, &HashSet<String>>,
-) -> Option<String> {
-    let fallback = usage.namespaces.first().cloned();
+) -> Vec<String> {
+    let fallback = usage
+        .namespaces
+        .first()
+        .cloned()
+        .into_iter()
+        .collect::<Vec<_>>();
 
-    match &usage.kind {
+    let resolved = match &usage.kind {
         UsageKind::Static(key) => usage
             .namespaces
             .iter()
-            .find(|namespace| {
+            .filter(|namespace| {
                 locale_key_index
                     .get(*namespace)
                     .is_some_and(|keys| keys.contains(key))
             })
             .cloned()
-            .or(fallback),
+            .collect::<Vec<_>>(),
         UsageKind::Prefix(prefix) => usage
             .namespaces
             .iter()
-            .find(|namespace| {
+            .filter(|namespace| {
                 locale_key_index
                     .get(*namespace)
                     .is_some_and(|keys| keys.iter().any(|key| key.starts_with(prefix)))
             })
             .cloned()
-            .or(fallback),
-        UsageKind::Dynamic => fallback,
+            .collect::<Vec<_>>(),
+        UsageKind::Dynamic => fallback.clone(),
+    };
+
+    if resolved.is_empty() {
+        fallback
+    } else {
+        resolved
     }
 }

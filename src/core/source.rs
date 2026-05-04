@@ -16,8 +16,7 @@ use oxc_ast::ast::{
     Argument, ArrayExpressionElement, BindingPattern, CallExpression, ConditionalExpression,
     Expression, Function, FunctionBody, JSXAttributeItem, JSXAttributeName, JSXAttributeValue,
     JSXElementName, JSXExpression, JSXOpeningElement, LogicalExpression, ObjectPropertyKind,
-    Program, PropertyKey,
-    Statement, TemplateLiteral, VariableDeclaration, VariableDeclarationKind,
+    Program, PropertyKey, Statement, TemplateLiteral, VariableDeclaration, VariableDeclarationKind,
 };
 use oxc_ast_visit::{Visit, walk};
 use oxc_parser::Parser;
