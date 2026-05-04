@@ -53,6 +53,20 @@ hunt --locales "public/locales/en-US" --src "src/"
 
 - `--locales` → Root directory of your locale JSON files
 - `--src` → Source code directory to scan (JS/TS/JSX/TSX)
+- `--config` → Optional TOML config file (defaults to `i18n-hunt.toml` when present)
+
+### Config (`i18n-hunt.toml`)
+
+```toml
+locales = "./locales"
+src = "./src"
+
+# Optional: skip paths
+src_exclude = ["**/*.test.ts", "legacy/**"]
+locales_exclude = ["Legacy/**"]
+```
+
+Both `locales` and `src` can point to either a directory or a specific file.
 
 ---
 
@@ -112,9 +126,6 @@ Planned improvements (subject to change):
   - include/exclude paths (including test-folder policy)
   - i18next compatibility options (`keySeparator`, `nsSeparator`, etc.)
   - ignore rules for keys/namespaces
-- Scoped scans:
-  - specific JSON files
-  - specific source directories/files
 - Respect `.gitignore`
 - Improved output formatting (DX)
   - clearer sections for `unused` and `dynamic` usages
