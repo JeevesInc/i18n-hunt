@@ -15,8 +15,8 @@ use oxc_allocator::Allocator;
 use oxc_ast::ast::{
     Argument, BindingPattern, CallExpression, ConditionalExpression, Expression, Function,
     FunctionBody, JSXAttributeItem, JSXAttributeName, JSXAttributeValue, JSXElementName,
-    JSXExpression, JSXOpeningElement, ObjectPropertyKind, Program, PropertyKey, Statement,
-    TemplateLiteral, VariableDeclaration, VariableDeclarationKind,
+    JSXExpression, JSXOpeningElement, LogicalExpression, ObjectPropertyKind, Program, PropertyKey,
+    Statement, TemplateLiteral, VariableDeclaration, VariableDeclarationKind,
 };
 use oxc_ast_visit::{Visit, walk};
 use oxc_parser::Parser;
@@ -379,6 +379,7 @@ impl CallCollector {
             Argument::StaticMemberExpression(member) => self.infer_static_member(member),
             Argument::CallExpression(call) => self.infer_call(call),
             Argument::ConditionalExpression(cond) => self.infer_conditional(cond),
+            Argument::LogicalExpression(logical) => self.infer_logical(logical),
             _ => InferredValue::dynamic(),
         }
     }
@@ -398,6 +399,7 @@ impl CallCollector {
             Expression::StaticMemberExpression(member) => self.infer_static_member(member),
             Expression::CallExpression(call) => self.infer_call(call),
             Expression::ConditionalExpression(cond) => self.infer_conditional(cond),
+            Expression::LogicalExpression(logical) => self.infer_logical(logical),
             Expression::TSAsExpression(ts) => self.infer_expression(&ts.expression),
             Expression::TSSatisfiesExpression(ts) => self.infer_expression(&ts.expression),
             Expression::TSTypeAssertion(ts) => self.infer_expression(&ts.expression),
@@ -461,6 +463,22 @@ impl CallCollector {
         let mut inferred = self.infer_expression(&cond.consequent);
         inferred.merge(self.infer_expression(&cond.alternate));
         inferred
+    }
+
+    fn infer_logical<'a>(&self, logical: &LogicalExpression<'a>) -> InferredValue {
+        let left = self.infer_expression(&logical.left);
+        let right = self.infer_expression(&logical.right);
+
+        if logical.operator.is_or() || logical.operator.is_coalesce() {
+            // `a || b` and `a ?? b` can reach either side at runtime.
+            let mut inferred = left;
+            inferred.merge(right);
+            return inferred;
+        }
+
+        // `a && b` may evaluate to a non-key value from the left side, so keep
+        // behavior conservative and avoid adding extra static usages.
+        InferredValue::dynamic()
     }
 
     fn infer_call<'a>(&self, call: &CallExpression<'a>) -> InferredValue {
