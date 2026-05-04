@@ -332,6 +332,7 @@ impl CallCollector {
                 continue;
             };
 
+            let init = strip_ts_expression_wrappers(init);
             let Expression::ObjectExpression(obj) = init else {
                 continue;
             };
@@ -347,16 +348,14 @@ impl CallCollector {
                     continue;
                 };
 
-                if prop.computed || prop.method {
+                if prop.method {
                     continue;
                 }
 
-                let Some(key) = object_property_key_to_string(&prop.key) else {
-                    continue;
-                };
-
                 let value = self.infer_expression(&prop.value);
-                map.insert(key, value);
+                for key in self.infer_object_property_keys(prop) {
+                    map.insert(key, value.clone());
+                }
             }
 
             if !map.is_empty() {
@@ -399,6 +398,10 @@ impl CallCollector {
             Expression::StaticMemberExpression(member) => self.infer_static_member(member),
             Expression::CallExpression(call) => self.infer_call(call),
             Expression::ConditionalExpression(cond) => self.infer_conditional(cond),
+            Expression::TSAsExpression(ts) => self.infer_expression(&ts.expression),
+            Expression::TSSatisfiesExpression(ts) => self.infer_expression(&ts.expression),
+            Expression::TSTypeAssertion(ts) => self.infer_expression(&ts.expression),
+            Expression::TSNonNullExpression(ts) => self.infer_expression(&ts.expression),
             _ => InferredValue::dynamic(),
         }
     }
@@ -427,6 +430,10 @@ impl CallCollector {
         }
 
         if property.dynamic || property.statics.is_empty() {
+            // Unknown indexes in const maps still imply any mapped key may be used.
+            for mapped_value in map.values() {
+                out.merge(mapped_value.clone());
+            }
             out.dynamic = true;
         }
 
@@ -465,6 +472,26 @@ impl CallCollector {
             .get(ident.name.as_str())
             .cloned()
             .unwrap_or_else(InferredValue::dynamic)
+    }
+
+    fn infer_object_property_keys<'a>(
+        &self,
+        property: &oxc_ast::ast::ObjectProperty<'a>,
+    ) -> Vec<String> {
+        if !property.computed {
+            return object_property_key_to_string(&property.key)
+                .into_iter()
+                .collect();
+        }
+
+        let Some(key_expr) = property.key.as_expression() else {
+            return Vec::new();
+        };
+
+        self.infer_expression(key_expr)
+            .statics
+            .into_iter()
+            .collect()
     }
 }
 
@@ -667,6 +694,16 @@ fn is_supported_source_file(path: &Path) -> bool {
         path.extension().and_then(|ext| ext.to_str()),
         Some("ts") | Some("tsx") | Some("js") | Some("jsx")
     )
+}
+
+fn strip_ts_expression_wrappers<'a>(expression: &'a Expression<'a>) -> &'a Expression<'a> {
+    match expression {
+        Expression::TSAsExpression(ts) => strip_ts_expression_wrappers(&ts.expression),
+        Expression::TSSatisfiesExpression(ts) => strip_ts_expression_wrappers(&ts.expression),
+        Expression::TSTypeAssertion(ts) => strip_ts_expression_wrappers(&ts.expression),
+        Expression::TSNonNullExpression(ts) => strip_ts_expression_wrappers(&ts.expression),
+        _ => expression,
+    }
 }
 
 /// Parses one source file and extracts translation usages from its AST.
