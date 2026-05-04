@@ -13,9 +13,10 @@ use globset::{Glob, GlobSet, GlobSetBuilder};
 use ignore::WalkBuilder;
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{
-    Argument, BindingPattern, CallExpression, ConditionalExpression, Expression, Function,
-    FunctionBody, JSXAttributeItem, JSXAttributeName, JSXAttributeValue, JSXElementName,
-    JSXExpression, JSXOpeningElement, LogicalExpression, ObjectPropertyKind, Program, PropertyKey,
+    Argument, ArrayExpressionElement, BindingPattern, CallExpression, ConditionalExpression,
+    Expression, Function, FunctionBody, JSXAttributeItem, JSXAttributeName, JSXAttributeValue,
+    JSXElementName, JSXExpression, JSXOpeningElement, LogicalExpression, ObjectPropertyKind,
+    Program, PropertyKey,
     Statement, TemplateLiteral, VariableDeclaration, VariableDeclarationKind,
 };
 use oxc_ast_visit::{Visit, walk};
@@ -372,6 +373,7 @@ impl CallCollector {
             Argument::TemplateLiteral(tpl) => {
                 InferredValue::from_usage_kind(classify_template_literal(tpl))
             }
+            Argument::ArrayExpression(array) => self.infer_array_expression(array),
             Argument::Identifier(ident) => self
                 .resolve_local(ident.name.as_str())
                 .unwrap_or_else(InferredValue::dynamic),
@@ -392,6 +394,7 @@ impl CallCollector {
             Expression::TemplateLiteral(tpl) => {
                 InferredValue::from_usage_kind(classify_template_literal(tpl))
             }
+            Expression::ArrayExpression(array) => self.infer_array_expression(array),
             Expression::Identifier(ident) => self
                 .resolve_local(ident.name.as_str())
                 .unwrap_or_else(InferredValue::dynamic),
@@ -492,6 +495,36 @@ impl CallCollector {
             .unwrap_or_else(InferredValue::dynamic)
     }
 
+    fn infer_array_expression<'a>(
+        &self,
+        array: &oxc_ast::ast::ArrayExpression<'a>,
+    ) -> InferredValue {
+        let mut inferred = InferredValue::default();
+
+        for element in &array.elements {
+            match element {
+                ArrayExpressionElement::StringLiteral(s) => {
+                    inferred.statics.insert(s.value.to_string());
+                }
+                ArrayExpressionElement::TemplateLiteral(tpl) if tpl.expressions.is_empty() => {
+                    let value = tpl
+                        .quasis
+                        .first()
+                        .map(|q| q.value.raw.as_str())
+                        .unwrap_or("");
+                    inferred.statics.insert(value.to_string());
+                }
+                _ => inferred.dynamic = true,
+            }
+        }
+
+        if inferred.statics.is_empty() && !inferred.dynamic {
+            InferredValue::dynamic()
+        } else {
+            inferred
+        }
+    }
+
     fn infer_object_property_keys<'a>(
         &self,
         property: &oxc_ast::ast::ObjectProperty<'a>,
@@ -511,6 +544,49 @@ impl CallCollector {
             .into_iter()
             .collect()
     }
+
+    fn iterator_callback_binding<'a>(
+        &self,
+        expr: &CallExpression<'a>,
+    ) -> Option<(String, InferredValue)> {
+        let Expression::StaticMemberExpression(member) = &expr.callee else {
+            return None;
+        };
+
+        let method = member.property.name.as_str();
+        if method != "map" && method != "forEach" {
+            return None;
+        }
+
+        let iterable_values = self.infer_iterator_values(&member.object)?;
+        let callback = expr.arguments.first()?;
+        let param_name = extract_callback_first_param_name(callback)?;
+
+        Some((param_name, iterable_values))
+    }
+
+    fn infer_iterator_values<'a>(&self, expression: &Expression<'a>) -> Option<InferredValue> {
+        match strip_ts_expression_wrappers(expression) {
+            Expression::ArrayExpression(array) => Some(self.infer_array_expression(array)),
+            Expression::Identifier(ident) => self.resolve_local(ident.name.as_str()),
+            _ => None,
+        }
+    }
+}
+
+fn extract_callback_first_param_name(argument: &Argument<'_>) -> Option<String> {
+    let params = match argument {
+        Argument::ArrowFunctionExpression(arrow) => &arrow.params.items,
+        Argument::FunctionExpression(function) => &function.params.items,
+        _ => return None,
+    };
+
+    let first = params.first()?;
+    let BindingPattern::BindingIdentifier(binding) = &first.pattern else {
+        return None;
+    };
+
+    Some(binding.name.to_string())
 }
 
 /// Extracts namespaces from a `useTranslation(...)` call expression.
@@ -562,6 +638,14 @@ impl<'a> Visit<'a> for CallCollector {
     }
 
     fn visit_call_expression(&mut self, expr: &CallExpression<'a>) {
+        if let Some((param_name, values)) = self.iterator_callback_binding(expr) {
+            self.push_scope();
+            self.bind_local(param_name, values);
+            walk::walk_call_expression(self, expr);
+            self.pop_scope();
+            return;
+        }
+
         match &expr.callee {
             Expression::Identifier(ident) => match ident.name.as_str() {
                 "useTranslation" => self.handle_use_translation(expr),
