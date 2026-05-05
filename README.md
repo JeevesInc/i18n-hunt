@@ -101,6 +101,8 @@ It classifies usages into:
 
 This approach avoids false positives while still surfacing real unused keys.
 
+Pattern reference: see [docs/supported-patterns.md](docs/supported-patterns.md).
+
 ---
 
 ## 📤 Output
