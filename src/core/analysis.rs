@@ -165,3 +165,75 @@ fn resolve_usage_namespaces(
         resolved
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::{collections::HashSet, path::PathBuf};
+
+    use super::analyze;
+    use crate::core::{
+        locale::LocaleFile,
+        source::{Usage, UsageKind},
+    };
+
+    #[test]
+    fn analyze_marks_static_and_prefix_keys_as_used() {
+        let locale = LocaleFile {
+            namespace: "Auth/Login".to_string(),
+            path: PathBuf::from("fixtures/locales/Auth/Login.json"),
+            keys: HashSet::from([
+                "title".to_string(),
+                "form.email".to_string(),
+                "form.password".to_string(),
+                "legacy.old".to_string(),
+            ]),
+        };
+
+        let usages = vec![
+            Usage {
+                namespaces: vec!["Auth/Login".to_string()],
+                kind: UsageKind::Static("title".to_string()),
+                path: PathBuf::from("fixtures/src/login.ts"),
+                line: 1,
+            },
+            Usage {
+                namespaces: vec!["Auth/Login".to_string()],
+                kind: UsageKind::Prefix("form.".to_string()),
+                path: PathBuf::from("fixtures/src/login.ts"),
+                line: 2,
+            },
+        ];
+
+        let result = analyze(&[locale], &usages);
+        let unused = result
+            .unused_keys
+            .iter()
+            .map(|k| k.key.as_str())
+            .collect::<HashSet<_>>();
+
+        assert!(!unused.contains("title"));
+        assert!(!unused.contains("form.email"));
+        assert!(!unused.contains("form.password"));
+        assert!(unused.contains("legacy.old"));
+    }
+
+    #[test]
+    fn analyze_keeps_dynamic_usage_sites() {
+        let locale = LocaleFile {
+            namespace: "Auth/Login".to_string(),
+            path: PathBuf::from("fixtures/locales/Auth/Login.json"),
+            keys: HashSet::from(["title".to_string()]),
+        };
+        let usages = vec![Usage {
+            namespaces: vec!["Auth/Login".to_string()],
+            kind: UsageKind::Dynamic,
+            path: PathBuf::from("fixtures/src/login.ts"),
+            line: 10,
+        }];
+
+        let result = analyze(&[locale], &usages);
+        assert_eq!(result.dynamic_usages.len(), 1);
+        assert_eq!(result.dynamic_usages[0].line, 10);
+        assert_eq!(result.dynamic_usages[0].namespaces, vec!["Auth/Login"]);
+    }
+}
