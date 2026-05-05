@@ -103,3 +103,72 @@ fn load_file_config(config_arg: Option<&Path>) -> Result<FileConfig, I18nError> 
 pub fn parse() -> Args {
     Args::parse()
 }
+
+#[cfg(test)]
+mod tests {
+    use std::{
+        fs::{create_dir_all, write},
+        path::PathBuf,
+        time::{SystemTime, UNIX_EPOCH},
+    };
+
+    use super::Args;
+    use crate::core::error::I18nError;
+
+    fn make_temp_dir() -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time should be valid")
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("i18n-hunt-tests-{}-{}", std::process::id(), nanos));
+        create_dir_all(&dir).expect("temp dir should be created");
+        dir
+    }
+
+    #[test]
+    fn into_config_reads_explicit_config_and_applies_excludes() {
+        let dir = make_temp_dir();
+        let locales = dir.join("locales");
+        let src = dir.join("src");
+        create_dir_all(&locales).expect("locales dir");
+        create_dir_all(&src).expect("src dir");
+
+        let config_path = dir.join("i18n-hunt.toml");
+        write(
+            &config_path,
+            format!(
+                "locales = \"{}\"\nsrc = \"{}\"\nsrc_exclude = [\"**/*.spec.ts\"]\nlocales_exclude = [\"Legacy/**\"]\n",
+                locales.display(),
+                src.display()
+            ),
+        )
+        .expect("config file write");
+
+        let args = Args {
+            locales: None,
+            src: None,
+            config: Some(config_path),
+        };
+
+        let config = args.into_config().expect("config should parse");
+        assert_eq!(config.locales, locales);
+        assert_eq!(config.src, src);
+        assert_eq!(config.src_exclude, vec!["**/*.spec.ts"]);
+        assert_eq!(config.locales_exclude, vec!["Legacy/**"]);
+    }
+
+    #[test]
+    fn into_config_returns_error_for_missing_inputs() {
+        let args = Args {
+            locales: None,
+            src: None,
+            config: None,
+        };
+
+        match args.into_config() {
+            Err(I18nError::Config(message)) => assert!(message.contains("missing locales path")),
+            Ok(_) => panic!("expected config error but got config"),
+            Err(other) => panic!("expected config error, got: {other}"),
+        }
+    }
+}
