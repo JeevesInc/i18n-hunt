@@ -22,7 +22,7 @@ It scans your source code and locale files to highlight keys that are no longer 
 
 **Experimental (WIP)**
 
-The project is currently in an early stage and under active development.  
+The project is currently in an early stage and under active development.
 The goal is to validate the approach, gather feedback, and evolve it into a stable CLI.
 
 ---
@@ -58,7 +58,7 @@ hunt --locales "public/locales/en-US" --src "src/"
 ### Config (`i18n-hunt.toml`)
 
 ```toml
-locales = "./locales"
+locales = "./locales/en-US"
 src = "./src"
 
 # Optional: skip paths
@@ -101,6 +101,8 @@ It classifies usages into:
 
 This approach avoids false positives while still surfacing real unused keys.
 
+Pattern reference: see [docs/supported-patterns.md](docs/supported-patterns.md).
+
 ---
 
 ## 📤 Output
@@ -108,13 +110,37 @@ This approach avoids false positives while still surfacing real unused keys.
 Example:
 
 ```
-[Auth/Login] -> legacy.oldLoginMessage
+Unused translation keys:
+
+[Auth/Login] public/locales/en/Auth/Login.json -> legacy.oldLoginMessage
+[Common] public/locales/en/Common.json -> legacy.oldTransLabel
+
+Total unused keys: 2
+
+Dynamic translation usage sites:
+
+src/pages/login.ts:42 -> [Auth/Login]
+src/pages/locations.ts:31 -> [TeamManagement/Locations]
+
+Total dynamic usages: 2
 ```
 
-Each result shows:
+Unused key entries show:
 
 - the namespace (based on file structure)
+- the locale file path
 - the unused key
+
+Dynamic usage entries show:
+
+- source file and line
+- namespaces in scope when the unresolved key was found
+
+If nothing is found, the CLI prints:
+
+```
+No unused translation keys found.
+```
 
 ---
 
@@ -122,19 +148,8 @@ Each result shows:
 
 Planned improvements (subject to change):
 
-- Config file (`i18n-hunt.config`)
-  - include/exclude paths (including test-folder policy)
-  - i18next compatibility options (`keySeparator`, `nsSeparator`, etc.)
-  - ignore rules for keys/namespaces
-- Respect `.gitignore`
-- Improved output formatting (DX)
-  - clearer sections for `unused` and `dynamic` usages
-  - machine-readable output (`--json`) for CI/tooling
-- Baseline mode for CI (track known findings, fail only on regressions)
 - Package manager wrapper (run via `npm`, `pnpm`, `yarn` / integrate with CI)
 - Auto-remove unused keys (safe mode first: dry-run + high-confidence only)
-- Performance/reporting telemetry (scan time, file counts, parse failures)
-- Cross-file inference for imported keys/functions (optional mode, lower priority)
 
 ---
 
