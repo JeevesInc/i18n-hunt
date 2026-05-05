@@ -58,7 +58,7 @@ hunt --locales "public/locales/en-US" --src "src/"
 ### Config (`i18n-hunt.toml`)
 
 ```toml
-locales = "./locales"
+locales = "./locales/en-US"
 src = "./src"
 
 # Optional: skip paths
