@@ -22,7 +22,7 @@ It scans your source code and locale files to highlight keys that are no longer 
 
 **Experimental (WIP)**
 
-The project is currently in an early stage and under active development.  
+The project is currently in an early stage and under active development.
 The goal is to validate the approach, gather feedback, and evolve it into a stable CLI.
 
 ---
@@ -122,19 +122,8 @@ Each result shows:
 
 Planned improvements (subject to change):
 
-- Config file (`i18n-hunt.config`)
-  - include/exclude paths (including test-folder policy)
-  - i18next compatibility options (`keySeparator`, `nsSeparator`, etc.)
-  - ignore rules for keys/namespaces
-- Respect `.gitignore`
-- Improved output formatting (DX)
-  - clearer sections for `unused` and `dynamic` usages
-  - machine-readable output (`--json`) for CI/tooling
-- Baseline mode for CI (track known findings, fail only on regressions)
 - Package manager wrapper (run via `npm`, `pnpm`, `yarn` / integrate with CI)
 - Auto-remove unused keys (safe mode first: dry-run + high-confidence only)
-- Performance/reporting telemetry (scan time, file counts, parse failures)
-- Cross-file inference for imported keys/functions (optional mode, lower priority)
 
 ---
 
