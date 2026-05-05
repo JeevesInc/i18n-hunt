@@ -1169,3 +1169,45 @@ fn jsx_expression_to_static_string(expression: &JSXExpression<'_>) -> Option<Str
         _ => None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use super::{UsageKind, collect_usages};
+
+    #[test]
+    fn collect_usages_detects_static_prefix_and_dynamic() {
+        let source_dir = PathBuf::from("fixtures/src");
+        let usages = collect_usages(&source_dir, &[]).expect("fixtures should parse");
+
+        assert!(usages.iter().any(|u| {
+            matches!(&u.kind, UsageKind::Static(key) if key == "title")
+                && u.namespaces.iter().any(|ns| ns == "Auth/Login")
+        }));
+
+        assert!(usages.iter().any(|u| {
+            matches!(&u.kind, UsageKind::Prefix(prefix) if prefix == "form.")
+                && u.namespaces.iter().any(|ns| ns == "Auth/Login")
+        }));
+
+        assert!(
+            usages
+                .iter()
+                .any(|u| matches!(&u.kind, UsageKind::Dynamic))
+        );
+    }
+
+    #[test]
+    fn collect_usages_respects_excludes() {
+        let source_dir = PathBuf::from("fixtures/src");
+        let usages = collect_usages(&source_dir, &[String::from("test/ignored.ts")])
+            .expect("fixtures should parse");
+
+        let ignored_path = PathBuf::from("fixtures/src/test/ignored.ts");
+        let included_path = PathBuf::from("fixtures/src/test/included.ts");
+
+        assert!(usages.iter().any(|u| u.path == included_path));
+        assert!(!usages.iter().any(|u| u.path == ignored_path));
+    }
+}
