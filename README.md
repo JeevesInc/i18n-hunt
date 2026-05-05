@@ -108,13 +108,37 @@ This approach avoids false positives while still surfacing real unused keys.
 Example:
 
 ```
-[Auth/Login] -> legacy.oldLoginMessage
+Unused translation keys:
+
+[Auth/Login] public/locales/en/Auth/Login.json -> legacy.oldLoginMessage
+[Common] public/locales/en/Common.json -> legacy.oldTransLabel
+
+Total unused keys: 2
+
+Dynamic translation usage sites:
+
+src/pages/login.ts:42 -> [Auth/Login]
+src/pages/locations.ts:31 -> [TeamManagement/Locations]
+
+Total dynamic usages: 2
 ```
 
-Each result shows:
+Unused key entries show:
 
 - the namespace (based on file structure)
+- the locale file path
 - the unused key
+
+Dynamic usage entries show:
+
+- source file and line
+- namespaces in scope when the unresolved key was found
+
+If nothing is found, the CLI prints:
+
+```
+No unused translation keys found.
+```
 
 ---
 
