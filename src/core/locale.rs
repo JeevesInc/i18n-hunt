@@ -220,3 +220,45 @@ fn derive_namespace(base: &Path, file: &Path) -> Result<String, I18nError> {
 
     Ok(namespace)
 }
+
+#[cfg(test)]
+mod tests {
+    use std::path::{Path, PathBuf};
+
+    use super::{derive_namespace, load_locales};
+
+    #[test]
+    fn load_locales_finds_and_flattens_keys() {
+        let root = PathBuf::from("fixtures/locales");
+        let locales = load_locales(&root, &[]).expect("fixtures should load");
+
+        let auth_login = locales
+            .iter()
+            .find(|l| l.namespace == "Auth/Login")
+            .expect("Auth/Login locale should exist");
+
+        assert!(auth_login.keys.contains("title"));
+        assert!(auth_login.keys.contains("form.email"));
+        assert!(auth_login.keys.contains("errors.network"));
+        assert!(auth_login.keys.contains("legacy.oldLoginMessage"));
+    }
+
+    #[test]
+    fn load_locales_respects_exclude_patterns() {
+        let root = PathBuf::from("fixtures/locales");
+        let locales = load_locales(&root, &[String::from("TestScope.json")]).expect("load works");
+
+        assert!(!locales.iter().any(|l| l.namespace == "TestScope"));
+    }
+
+    #[test]
+    fn derive_namespace_requires_path_under_base() {
+        let base = Path::new("fixtures/locales");
+        let outside = Path::new("fixtures/src/login.ts");
+        let err = derive_namespace(base, outside).expect_err("outside path should fail");
+        let message = err.to_string();
+
+        assert!(message.contains("invalid path"));
+        assert!(message.contains("could not strip base prefix"));
+    }
+}
