@@ -3,6 +3,7 @@
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 
+// TODO: replace bundled binaries with optionalDependencies per platform :)
 function getBinaryName() {
     const platform = process.platform;
     const arch = process.arch;
