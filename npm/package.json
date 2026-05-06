@@ -1,0 +1,14 @@
+{
+    "name": "i18n-hunt",
+    "version": "0.1.0",
+    "bin": {
+        "i18n-hunt": "./bin/i18n-hunt.cjs"
+    },
+    "files": [
+        "bin",
+        "native"
+    ],
+    "scripts": {
+        "build": "cargo build --release && node scripts/copy-binary.cjs"
+    }
+}
