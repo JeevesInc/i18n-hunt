@@ -8,4 +8,7 @@
         "bin",
         "native"
     ],
+    "scripts": {
+        "build": "cargo build --release && node scripts/copy-binary.cjs"
+    }
 }
