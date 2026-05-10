@@ -29,12 +29,21 @@ pub struct Args {
     /// Automatically remove unused keys from locale files.
     #[arg(long)]
     fix: bool,
+
+    /// Show detailed sections (unused keys and dynamic usage sites).
+    #[arg(long)]
+    log: bool,
 }
 
 impl Args {
     /// Returns whether auto-fix mode was requested.
     pub fn fix_mode(&self) -> bool {
         self.fix
+    }
+
+    /// Returns whether detailed logging output was requested.
+    pub fn log_mode(&self) -> bool {
+        self.log
     }
 
     /// Converts CLI arguments into core analysis configuration.
@@ -159,6 +168,7 @@ mod tests {
             src: None,
             config: Some(config_path),
             fix: false,
+            log: false,
         };
 
         let config = args.into_config().expect("config should parse");
@@ -175,6 +185,7 @@ mod tests {
             src: None,
             config: None,
             fix: false,
+            log: false,
         };
 
         match args.into_config() {

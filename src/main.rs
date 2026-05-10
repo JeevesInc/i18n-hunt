@@ -27,6 +27,7 @@ fn main() {
 fn run() -> Result<(), I18nError> {
     let args = cli::parse();
     let fix_mode = args.fix_mode();
+    let log_mode = args.log_mode();
     let config = args.into_config()?;
 
     let mut result = core::run(&config)?;
@@ -40,6 +41,6 @@ fn run() -> Result<(), I18nError> {
         result = core::run(&config)?;
     }
 
-    core::print_report(&result);
+    core::print_report(&result, log_mode);
     Ok(())
 }
