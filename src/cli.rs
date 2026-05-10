@@ -25,9 +25,18 @@ pub struct Args {
     /// loaded automatically when present.
     #[arg(long)]
     config: Option<PathBuf>,
+
+    /// Automatically remove unused keys from locale files.
+    #[arg(long)]
+    fix: bool,
 }
 
 impl Args {
+    /// Returns whether auto-fix mode was requested.
+    pub fn fix_mode(&self) -> bool {
+        self.fix
+    }
+
     /// Converts CLI arguments into core analysis configuration.
     ///
     /// # Returns
@@ -120,7 +129,8 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .expect("system time should be valid")
             .as_nanos();
-        let dir = std::env::temp_dir().join(format!("i18n-hunt-tests-{}-{}", std::process::id(), nanos));
+        let dir =
+            std::env::temp_dir().join(format!("i18n-hunt-tests-{}-{}", std::process::id(), nanos));
         create_dir_all(&dir).expect("temp dir should be created");
         dir
     }
@@ -148,6 +158,7 @@ mod tests {
             locales: None,
             src: None,
             config: Some(config_path),
+            fix: false,
         };
 
         let config = args.into_config().expect("config should parse");
@@ -163,6 +174,7 @@ mod tests {
             locales: None,
             src: None,
             config: None,
+            fix: false,
         };
 
         match args.into_config() {

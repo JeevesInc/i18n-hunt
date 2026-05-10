@@ -8,6 +8,7 @@ use crate::core::{analysis::AnalysisResult, error::I18nError};
 
 pub mod analysis;
 pub mod error;
+pub mod fix;
 pub mod locale;
 pub mod source;
 
