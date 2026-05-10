@@ -1191,11 +1191,7 @@ mod tests {
                 && u.namespaces.iter().any(|ns| ns == "Auth/Login")
         }));
 
-        assert!(
-            usages
-                .iter()
-                .any(|u| matches!(&u.kind, UsageKind::Dynamic))
-        );
+        assert!(usages.iter().any(|u| matches!(&u.kind, UsageKind::Dynamic)));
     }
 
     #[test]

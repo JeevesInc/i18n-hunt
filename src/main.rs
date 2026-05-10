@@ -26,9 +26,19 @@ fn main() {
 /// Returns [`I18nError`] when locale loading or source analysis fails.
 fn run() -> Result<(), I18nError> {
     let args = cli::parse();
+    let fix_mode = args.fix_mode();
     let config = args.into_config()?;
 
-    let result = core::run(&config)?;
+    let mut result = core::run(&config)?;
+
+    if fix_mode {
+        let fix_result = core::fix::apply(&result.unused_keys)?;
+        println!(
+            "Auto-fix removed {} keys across {} files.",
+            fix_result.removed_keys, fix_result.touched_files
+        );
+        result = core::run(&config)?;
+    }
 
     core::print_report(&result);
     Ok(())
