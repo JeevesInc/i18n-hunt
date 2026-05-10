@@ -11,7 +11,7 @@ oxc_ast_visit = "0.121.0"
 oxc_parser = "0.121.0"
 oxc_span = "0.121.0"
 serde = { version = "1.0.228", features = ["derive"] }
-serde_json = "1.0.149"
+serde_json = { version = "1.0.149", features = ["preserve_order"] }
 ignore = "0.4.25"
 toml = "0.8.19"
 globset = "0.4.15"
