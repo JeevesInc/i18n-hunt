@@ -30,7 +30,7 @@ fn run() -> Result<(), I18nError> {
     let log_mode = args.log_mode();
     let config = args.into_config()?;
 
-    let mut result = core::run(&config)?;
+    let result = core::run(&config)?;
 
     if fix_mode {
         let fix_result = core::fix::apply(&result.unused_keys)?;
@@ -38,7 +38,7 @@ fn run() -> Result<(), I18nError> {
             "Auto-fix removed {} keys across {} files.",
             fix_result.removed_keys, fix_result.touched_files
         );
-        result = core::run(&config)?;
+        return Ok(());
     }
 
     core::print_report(&result, log_mode);

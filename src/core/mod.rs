@@ -55,7 +55,9 @@ pub fn print_report(result: &AnalysisResult, show_details: bool) {
     let used_count = result.total_keys.saturating_sub(result.unused_keys.len());
 
     println!("{}", "Summary".bold().cyan());
-    println!("  Used keys:      {:>5}", used_count);
+    if show_details {
+        println!("  Used keys:      {:>5}", used_count);
+    }
     println!("  Unused keys:    {:>5}", result.unused_keys.len());
     println!("  Dynamic usages: {:>5}", result.dynamic_usages.len());
 
