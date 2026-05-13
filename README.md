@@ -71,6 +71,8 @@ It classifies translation usage into:
 
 This helps reduce false positives while still surfacing genuinely unused translations.
 
+For supported patterns and detection details, see the [Wiki](https://github.com/JeevesInc/i18n-hunt/wiki).
+
 ## 🤝 Contributing
 
 Contributions and feedback are welcome — especially at this stage.
