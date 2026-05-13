@@ -1,6 +1,6 @@
 {
     "name": "@jeevesinc/i18n-hunt",
-    "version": "0.1.0",
+    "version": "0.1.0-alpha.1",
     "description": "Find unused i18n translation keys in JavaScript projects using AST analysis",
     "homepage": "https://github.com/JeevesInc/i18n-hunt#readme",
     "repository": {
