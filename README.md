@@ -29,15 +29,22 @@ The goal is to validate the approach, gather feedback, and evolve it into a stab
 
 ## 🚀 Getting Started
 
-For now, the CLI is not published yet.
+The package is published to **GitHub Packages** (GitHub’s npm registry) under the scope `@jeevesinc`.
 
-Run it locally using Cargo:
+```bash
+npm install @jeevesinc/i18n-hunt --registry=https://npm.pkg.github.com
+```
 
-```
-cargo run -- \
-  --locales "public/locales/en-US/" \
-  --src "src/"
-```
+---
+
+## Releasing (maintainers)
+
+Publishing runs automatically when a **GitHub Release is published** (not while the release is still a draft). The workflow expects:
+
+1. **`Cargo.toml` `version`** must match the release tag without the leading `v` (for example tag `v0.2.0` and `version = "0.2.0"`).
+2. The release tag is the source of truth for the **npm** `version` field at publish time.
+
+Native binaries are built on Linux, macOS (Intel and Apple silicon), and Windows; the npm tarball includes all of them under `npm/native/` - we gonna improve it :) .
 
 ---
 
@@ -46,7 +53,7 @@ cargo run -- \
 Basic usage:
 
 ```
-hunt --locales "public/locales/en-US" --src "src/"
+npm run i18n-hunt --locales "public/locales/en-US" --src "src/"
 ```
 
 ### Parameters
@@ -74,17 +81,17 @@ Both `locales` and `src` can point to either a directory or a specific file.
 
 ```
 # Scan entire project
-hunt --locales "public/locales/en" --src "src/"
+npm run i18n-hunt --locales "public/locales/en" --src "src/"
 ```
 
 > Planned (WIP):
 
 ```
 # Scan a specific locale folder
-hunt --locales "public/locales/en/TeamManagement" --src "src/"
+npm run i18n-hunt --locales "public/locales/en/TeamManagement" --src "src/"
 
 # Context-aware scan (more focused + faster)
-hunt --locales "public/locales/en/TripRequest" --src "src/views/trip-request/"
+npm run i18n-hunt --locales "public/locales/en/TripRequest" --src "src/views/trip-request/"
 ```
 
 ---
