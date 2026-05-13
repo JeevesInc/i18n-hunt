@@ -1,0 +1,102 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build-native:
+    name: Build ${{ matrix.native }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            native: i18n-hunt-linux-x64
+            binary: target/release/i18n-hunt
+          - os: macos-13
+            native: i18n-hunt-darwin-x64
+            binary: target/release/i18n-hunt
+          - os: macos-latest
+            native: i18n-hunt-darwin-arm64
+            binary: target/release/i18n-hunt
+          - os: windows-latest
+            native: i18n-hunt-win32-x64.exe
+            binary: target/release/i18n-hunt.exe
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Build release binary
+        run: cargo build --release
+
+      - name: Stage native binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp "${{ matrix.binary }}" "${{ matrix.native }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.native }}
+          path: ${{ matrix.native }}
+
+  publish:
+    name: Publish npm package
+    needs: build-native
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify Cargo.toml matches tag and set npm version
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          TAG_VER="${TAG#v}"
+          CARGO_VER=$(grep -E '^version[[:space:]]*=' Cargo.toml | head -1 | sed -E 's/^version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/')
+          if [ "$CARGO_VER" != "$TAG_VER" ]; then
+            echo "::error::Cargo.toml version ($CARGO_VER) must match release tag ($TAG -> expected $TAG_VER)"
+            exit 1
+          fi
+          export TAG_VER
+          node -e "
+            const fs = require('fs');
+            const v = process.env.TAG_VER;
+            const p = 'npm/package.json';
+            const j = JSON.parse(fs.readFileSync(p, 'utf8'));
+            j.version = v;
+            fs.writeFileSync(p, JSON.stringify(j, null, 4) + '\n');
+          "
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: npm/native
+          pattern: i18n-hunt-*
+          merge-multiple: true
+
+      - name: Restore execute bits on Unix natives
+        run: |
+          set -euo pipefail
+          for f in npm/native/*; do
+            [ -f "$f" ] || continue
+            case "$f" in *.exe) continue ;; esac
+            chmod +x "$f"
+          done
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: https://npm.pkg.github.com
+          scope: "@jeevesinc"
+
+      - name: Publish to GitHub Packages
+        working-directory: npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm publish --access public
