@@ -1,6 +1,19 @@
 {
-    "name": "i18n-hunt",
+    "name": "@jeevesinc/i18n-hunt",
     "version": "0.1.0",
+    "description": "Find unused i18n translation keys in JavaScript projects using AST analysis",
+    "homepage": "https://github.com/JeevesInc/i18n-hunt#readme",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/JeevesInc/i18n-hunt.git"
+    },
+    "bugs": {
+        "url": "https://github.com/JeevesInc/i18n-hunt/issues"
+    },
+    "publishConfig": {
+        "registry": "https://npm.pkg.github.com",
+        "access": "public"
+    },
     "bin": {
         "i18n-hunt": "./bin/i18n-hunt.cjs"
     },
